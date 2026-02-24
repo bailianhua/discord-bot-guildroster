@@ -1,0 +1,18 @@
+{
+  "name": "guild-roster-bot",
+  "version": "0.1.0",
+  "description": "Discord app for guild member profiles and roster registration",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "check": "node --check src/index.js && node --check src/store.js && node --check src/commands.js && node --check src/constants.js && node --check src/config/select-options.js && node --check src/ui/builders.js && node --check src/services/deploy-commands.js && node --check src/services/permissions.js && node --check src/services/roster-messages.js && node --check src/interactions/index.js && node --check src/interactions/chat-input.js && node --check src/interactions/select-menu.js && node --check src/interactions/modal-submit.js && node --check src/interactions/button.js"
+  },
+  "engines": {
+    "node": ">=18.17.0"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5"
+  }
+}
