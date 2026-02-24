@@ -56,10 +56,11 @@ On start, slash commands are registered automatically.
 - `/registerpanel` (admin only: post a registration card with button)
 - `/menu` (post a persistent Components V2 menu card with action buttons)
 - `/startroster title:<optional text>` (admin only: Manage Server permission, users join/cancel via buttons, admin can open set-team modal from roster message)
-- `/roster` (show list of created rosters)
-- `/showroster` (pick roster by name, show details, include join/cancel buttons, and admin set-team button in that message)
-- `/myroster` (show your registered profile and rosters you joined/assigned)
-- `/setteam` (admin only: opens modal to pick multiple members, team, and roster dropdown)
+- `/roster` (show list of created rosters as a Components V2 card)
+- `/showroster` (ephemeral: pick roster by name, show details as a Components V2 card, include join/cancel buttons, and admin set-team button)
+- `/announceroster` (admin only: pick roster and post the full roster detail publicly in channel)
+- `/myroster` (show your registered profile and rosters you joined/assigned as a Components V2 card)
+- `/setteam` (admin only: pick roster first, then assign team with user picker)
 - `/deleteroster` (admin only: opens a picker to choose which roster to delete)
 
 ## Data storage

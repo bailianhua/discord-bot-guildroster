@@ -1,6 +1,5 @@
 const { PermissionFlagsBits } = require("discord.js");
 const {
-  addMemberToRoster,
   getMemberInfo,
   getRoster,
   getRosterEntries,
@@ -19,7 +18,7 @@ async function handleModalSubmit(interaction) {
     return;
   }
 
-  if (interaction.customId === "setteam_modal") {
+  if (interaction.customId === "setteam_modal" || interaction.customId.startsWith("setteam_modal:")) {
     if (
       !interaction.memberPermissions ||
       !interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild)
@@ -45,9 +44,17 @@ async function handleModalSubmit(interaction) {
     }
 
     const team = interaction.fields.getStringSelectValues("setteam_team_value")[0];
-    const targetRosterId = interaction.fields.getStringSelectValues(
-      "setteam_roster_value"
-    )[0];
+    const lockedRosterId = interaction.customId.startsWith("setteam_modal:")
+      ? interaction.customId.split(":")[1]
+      : null;
+    const targetRosterId = lockedRosterId;
+    if (!targetRosterId) {
+      await interaction.reply({
+        content: "ไม่พบกิจกรรมที่ต้องการตั้งทีม กรุณาเปิดผ่าน /setteam หรือปุ่มตั้งทีมในกิจกรรม",
+        ephemeral: true
+      });
+      return;
+    }
     const targetRoster = getRoster(targetRosterId);
 
     if (!targetRoster) {
@@ -58,27 +65,54 @@ async function handleModalSubmit(interaction) {
       return;
     }
 
-    const assignedIds = [];
+    const selectedIds = members.map((member) => member.id);
     const missingProfileIds = [];
+    const notInRosterIds = [];
+    const validIds = [];
+    const rosterMemberSet = new Set(targetRoster.memberIds || []);
 
-    for (const member of members) {
-      const profile = getMemberInfo(interaction.guildId, member.id);
+    for (const memberId of selectedIds) {
+      const profile = getMemberInfo(interaction.guildId, memberId);
       if (!profile) {
-        missingProfileIds.push(member.id);
+        missingProfileIds.push(memberId);
         continue;
       }
 
-      addMemberToRoster(targetRoster.messageId, member.id);
-      setMemberTeamInRoster(targetRoster.messageId, member.id, team);
-      assignedIds.push(member.id);
+      if (!rosterMemberSet.has(memberId)) {
+        notInRosterIds.push(memberId);
+        continue;
+      }
+
+      validIds.push(memberId);
     }
 
-    if (assignedIds.length === 0) {
+    if (validIds.length === 0) {
+      const lines = ["ไม่สามารถกำหนดทีมได้ เพราะไม่พบสมาชิกที่ผ่านเงื่อนไข"];
+      if (missingProfileIds.length > 0) {
+        lines.push(
+          `ยังไม่มีโปรไฟล์ (${missingProfileIds.length}): ${missingProfileIds
+            .map((id) => `<@${id}>`)
+            .join(", ")}`
+        );
+      }
+      if (notInRosterIds.length > 0) {
+        lines.push(
+          `ยังไม่ได้ลงชื่อในกิจกรรม (${notInRosterIds.length}): ${notInRosterIds
+            .map((id) => `<@${id}>`)
+            .join(", ")}`
+        );
+      }
       await interaction.reply({
-        content: "ไม่สามารถกำหนดทีมได้ เพราะสมาชิกที่เลือกยังไม่ได้ลงทะเบียนโปรไฟล์",
+        content: lines.join("\n"),
         ephemeral: true
       });
       return;
+    }
+
+    const assignedIds = [];
+    for (const memberId of validIds) {
+      setMemberTeamInRoster(targetRoster.messageId, memberId, team);
+      assignedIds.push(memberId);
     }
 
     await syncRosterMessage(interaction.guild, targetRoster.messageId, targetRoster.title);
@@ -86,15 +120,26 @@ async function handleModalSubmit(interaction) {
     const data = getRosterEntries(targetRoster.messageId);
     const embed = buildRosterEmbed(targetRoster.title, data.entries);
 
-    let summary = `กำหนดทีม **${team === "attack" ? "Attack" : "Defense"}** ให้สมาชิก ${assignedIds.length} คนเรียบร้อย`;
+    const summaryLines = [
+      `กำหนดทีม **${team === "attack" ? "Attack" : "Defense"}** ให้สมาชิก ${assignedIds.length} คนเรียบร้อย`
+    ];
     if (missingProfileIds.length > 0) {
-      summary += `\nสมาชิกที่ข้าม (${missingProfileIds.length}): ${missingProfileIds
-        .map((id) => `<@${id}>`)
-        .join(", ")}`;
+      summaryLines.push(
+        `ข้าม (ไม่มีโปรไฟล์) ${missingProfileIds.length}: ${missingProfileIds
+          .map((id) => `<@${id}>`)
+          .join(", ")}`
+      );
+    }
+    if (notInRosterIds.length > 0) {
+      summaryLines.push(
+        `ข้าม (ยังไม่ได้ลงชื่อกิจกรรม) ${notInRosterIds.length}: ${notInRosterIds
+          .map((id) => `<@${id}>`)
+          .join(", ")}`
+      );
     }
 
     await interaction.reply({
-      content: summary,
+      content: summaryLines.join("\n"),
       embeds: [embed],
       ephemeral: true
     });

@@ -14,13 +14,13 @@ const {
 } = require("../store");
 const {
   buildMenuComponentsV2,
-  buildMyRosterEmbed,
+  buildMyRosterComponentsV2,
   buildRegisterButton,
   buildRegisterModal,
   buildRegistrationPanelEmbed,
   buildRosterActionRow,
   buildRosterEmbed,
-  buildRosterListEmbed,
+  buildRosterListComponentsV2,
   buildRosterPickerMenu,
   buildSetTeamModal
 } = require("../ui/builders");
@@ -168,8 +168,10 @@ async function handleChatInput(interaction, { client }) {
       return;
     }
 
-    const embed = buildRosterListEmbed(rosters);
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({
+      components: buildRosterListComponentsV2(rosters),
+      flags: MessageFlags.IsComponentsV2
+    });
     return;
   }
 
@@ -189,7 +191,42 @@ async function handleChatInput(interaction, { client }) {
         new ActionRowBuilder().addComponents(
           buildRosterPickerMenu("show_roster_pick", "เลือกกิจกรรมที่ต้องการแสดง", rosters)
         )
-      ]
+      ],
+      ephemeral: true
+    });
+    return;
+  }
+
+  if (interaction.commandName === "announceroster") {
+    if (!isManageGuild(interaction)) {
+      await interaction.reply({
+        content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ประกาศกิจกรรมได้",
+        ephemeral: true
+      });
+      return;
+    }
+
+    const rosters = getRecentRostersInGuild(interaction.guildId, 25);
+    if (rosters.length === 0) {
+      await interaction.reply({
+        content: "ยังไม่มีกิจกรรมที่ถูกสร้างในเซิร์ฟเวอร์นี้",
+        ephemeral: true
+      });
+      return;
+    }
+
+    await interaction.reply({
+      content: "เลือกกิจกรรมที่ต้องการประกาศในช่องนี้",
+      components: [
+        new ActionRowBuilder().addComponents(
+          buildRosterPickerMenu(
+            "announce_roster_pick",
+            "เลือกกิจกรรมที่ต้องการประกาศ",
+            rosters
+          )
+        )
+      ],
+      ephemeral: true
     });
     return;
   }
@@ -202,8 +239,10 @@ async function handleChatInput(interaction, { client }) {
       25
     );
 
-    const embed = buildMyRosterEmbed(interaction.user, profile, rosters);
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.reply({
+      components: buildMyRosterComponentsV2(interaction.user, profile, rosters),
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral
+    });
     return;
   }
 
@@ -225,7 +264,15 @@ async function handleChatInput(interaction, { client }) {
       return;
     }
 
-    await interaction.showModal(buildSetTeamModal(rosters));
+    await interaction.reply({
+      content: "เลือกกิจกรรมที่ต้องการตั้งทีม",
+      components: [
+        new ActionRowBuilder().addComponents(
+          buildRosterPickerMenu("setteam_roster_pick", "เลือกกิจกรรมที่ต้องการตั้งทีม", rosters)
+        )
+      ],
+      ephemeral: true
+    });
     return;
   }
 

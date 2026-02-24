@@ -29,11 +29,15 @@ const commands = [
     .setName("showroster")
     .setDescription("เลือกชื่อกิจกรรมเพื่อดูรายละเอียด"),
   new SlashCommandBuilder()
+    .setName("announceroster")
+    .setDescription("เลือกกิจกรรมแล้วประกาศรายละเอียดแบบสาธารณะในช่อง")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder()
     .setName("myroster")
     .setDescription("แสดงข้อมูลการลงทะเบียนและกิจกรรมของฉัน"),
   new SlashCommandBuilder()
     .setName("setteam")
-    .setDescription("กำหนดทีมโจมตี/ป้องกันให้สมาชิกในกิจกรรม (ผ่านหน้าต่างฟอร์ม)")
+    .setDescription("เลือกกิจกรรมแล้วกำหนดทีมโจมตี/ป้องกันให้สมาชิก")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder()
     .setName("deleteroster")

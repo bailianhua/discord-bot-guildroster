@@ -6,6 +6,7 @@ const {
   EmbedBuilder,
   LabelBuilder,
   ModalBuilder,
+  SeparatorBuilder,
   SectionBuilder,
   StringSelectMenuBuilder,
   TextDisplayBuilder,
@@ -181,10 +182,10 @@ function buildRegisterModal() {
   return modal;
 }
 
-function buildSetTeamModal(rosters) {
+function buildSetTeamModal(roster) {
   const modal = new ModalBuilder()
-    .setCustomId("setteam_modal")
-    .setTitle("กำหนดทีมสมาชิก");
+    .setCustomId(`setteam_modal:${roster.messageId}`)
+    .setTitle(`กำหนดทีม: ${truncateLabel(roster.title || "Roster", 32)}`);
 
   const memberSelect = new UserSelectMenuBuilder()
     .setCustomId("setteam_member_value")
@@ -201,23 +202,6 @@ function buildSetTeamModal(rosters) {
     .setMaxValues(1)
     .addOptions(TEAM_OPTIONS);
 
-  const rosterSelect = new StringSelectMenuBuilder()
-    .setCustomId("setteam_roster_value")
-    .setPlaceholder("เลือกกิจกรรมที่ต้องการกำหนดทีม")
-    .setRequired(true)
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(
-      rosters.map((roster) => {
-        const when = new Date(roster.createdAt).toLocaleString("th-TH");
-        return {
-          label: truncateLabel(roster.title || `Roster ${roster.messageId}`, 100),
-          description: truncateLabel(`สร้างเมื่อ ${when}`, 100),
-          value: roster.messageId
-        };
-      })
-    );
-
   modal.addLabelComponents(
     new LabelBuilder()
       .setLabel("สมาชิก")
@@ -226,11 +210,7 @@ function buildSetTeamModal(rosters) {
     new LabelBuilder()
       .setLabel("ทีม")
       .setDescription("เลือกทีมที่ต้องการกำหนด")
-      .setStringSelectMenuComponent(teamSelect),
-    new LabelBuilder()
-      .setLabel("กิจกรรม")
-      .setDescription("เลือกกิจกรรมที่ต้องการกำหนดทีม")
-      .setStringSelectMenuComponent(rosterSelect)
+      .setStringSelectMenuComponent(teamSelect)
   );
 
   return modal;
@@ -321,6 +301,100 @@ function buildRosterEmbed(title, entries) {
     .setTimestamp();
 }
 
+function buildRosterComponentsV2(title, entries, rosterMessageId) {
+  const pathLabelByValue = Object.fromEntries(
+    PATH_OPTIONS.map((option) => [option.value, option.label])
+  );
+  const weaponLabelByValue = Object.fromEntries(
+    WEAPON_OPTIONS.map((option) => [option.value, option.label])
+  );
+
+  const getTeamBucket = (team) => {
+    if (team === "attack") return "attack";
+    if (team === "defense") return "defense";
+    return "unassigned";
+  };
+  const buckets = {
+    attack: [],
+    defense: [],
+    unassigned: []
+  };
+
+  entries.forEach((entry) => {
+    buckets[getTeamBucket(entry.team)].push(entry);
+  });
+
+  const formatMemberLine = (entry, idx) => {
+    const p = entry.profile;
+    if (!p) return `${idx + 1}. <@${entry.userId}> | ไม่พบข้อมูลโปรไฟล์`;
+
+    const profilePath = p.path || p.class || "-";
+    const pathLabel = pathLabelByValue[profilePath] || profilePath;
+    const weaponLabel = weaponLabelByValue[p.weapon] || p.weapon || "-";
+    return `${idx + 1}. <@${entry.userId}> | ${p.ign} | ${pathLabel} | ${weaponLabel}`;
+  };
+
+  const formatBucket = (list) => {
+    if (list.length === 0) return "ไม่มีสมาชิก";
+    const lines = list.map((entry, idx) => formatMemberLine(entry, idx));
+    const maxChars = 1400;
+    const joined = lines.join("\n");
+    if (joined.length <= maxChars) return joined;
+
+    let kept = [];
+    let used = 0;
+    for (const line of lines) {
+      if (used + line.length + 1 > maxChars - 24) break;
+      kept.push(line);
+      used += line.length + 1;
+    }
+    const hidden = lines.length - kept.length;
+    return `${kept.join("\n")}\n...และอีก ${hidden} คน`;
+  };
+
+  const total = entries.length;
+  const attackCount = buckets.attack.length;
+  const defenseCount = buckets.defense.length;
+  const unassignedCount = buckets.unassigned.length;
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0x00b894)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `## ${truncateLabel(title || "รายละเอียดกิจกรรม", 80)}`
+      ),
+      new TextDisplayBuilder().setContent(
+        `สมาชิกทั้งหมด ${total} คน | Attack ${attackCount} | Defense ${defenseCount} | Unassigned ${unassignedCount}`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### Attack Team (${attackCount})\n${formatBucket(buckets.attack)}`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### Defense Team (${defenseCount})\n${formatBucket(buckets.defense)}`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `### Unassigned (${unassignedCount})\n${formatBucket(buckets.unassigned)}`
+      )
+    );
+
+  if (rosterMessageId) {
+    container.addSeparatorComponents(new SeparatorBuilder()).addActionRowComponents(
+      buildRosterActionRow(rosterMessageId)
+    );
+  }
+
+  return [container];
+}
+
 function buildMyRosterEmbed(user, profile, rosters) {
   const teamLabel = (team) => {
     if (team === "attack") return "Attack";
@@ -351,6 +425,48 @@ function buildMyRosterEmbed(user, profile, rosters) {
     )
     .setColor(0x1abc9c)
     .setTimestamp();
+}
+
+function buildMyRosterComponentsV2(user, profile, rosters) {
+  const teamLabel = (team) => {
+    if (team === "attack") return "Attack";
+    if (team === "defense") return "Defense";
+    return "Unassigned";
+  };
+
+  const profilePath = profile?.path || profile?.class || "-";
+  const profileText = profile
+    ? `${profile.ign} | ${profilePath} | ${profile.weapon}`
+    : "ยังไม่ได้ลงทะเบียนโปรไฟล์";
+
+  const rosterLines = rosters.length
+    ? rosters.map((roster, idx) => {
+      const createdAt = new Date(roster.createdAt).toLocaleString("th-TH");
+      const team = roster.memberTeams?.[user.id] || null;
+      return `${idx + 1}. **${truncateLabel(roster.title, 65)}** | ทีม: ${teamLabel(
+        team
+      )} | <#${roster.channelId}> | ${createdAt}`;
+    }).join("\n")
+    : "ยังไม่พบกิจกรรมที่คุณเข้าร่วมหรือถูกกำหนดทีม";
+
+  const maxRosterChars = 3200;
+  const safeRosterLines =
+    rosterLines.length > maxRosterChars
+      ? `${rosterLines.slice(0, maxRosterChars)}\n...รายการเพิ่มเติมถูกตัด`
+      : rosterLines;
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0x1abc9c)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`## ข้อมูลของ ${user.username}`),
+      new TextDisplayBuilder().setContent(`### โปรไฟล์\n${profileText}`)
+    )
+    .addSeparatorComponents(new SeparatorBuilder())
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(`### กิจกรรมของฉัน\n${safeRosterLines}`)
+    );
+
+  return [container];
 }
 
 function buildRosterPickerMenu(customId, placeholder, rosters) {
@@ -399,15 +515,73 @@ function buildRosterListEmbed(rosters) {
     .setTimestamp();
 }
 
+function buildRosterListComponentsV2(rosters) {
+  const maxItems = 10;
+  const shownRosters = rosters.slice(0, maxItems);
+  const hiddenCount = rosters.length - shownRosters.length;
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0x2ecc71)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("## รายการกิจกรรมที่สร้างไว้"),
+      new TextDisplayBuilder().setContent(
+        `แสดง ${shownRosters.length}/${rosters.length} รายการ | ใช้ \`/showroster\` เพื่อดูรายละเอียดกิจกรรม`
+      )
+    )
+    .addSeparatorComponents(new SeparatorBuilder());
+
+  shownRosters.forEach((roster, idx) => {
+    const createdAt = new Date(roster.createdAt).toLocaleString("th-TH");
+    const count = roster.memberIds?.length || 0;
+    const memberIds = roster.memberIds || [];
+    const attackCount = memberIds.filter(
+      (userId) => roster.memberTeams?.[userId] === "attack"
+    ).length;
+    const defenseCount = memberIds.filter(
+      (userId) => roster.memberTeams?.[userId] === "defense"
+    ).length;
+    const unassignedCount = count - attackCount - defenseCount;
+
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        [
+          `### ${idx + 1}. ${truncateLabel(roster.title || `Roster ${roster.messageId}`, 80)}`,
+          `**Total:** ${count} | **Attack:** ${attackCount} | **Defense:** ${defenseCount} | **Unassigned:** ${unassignedCount}`,
+          `ห้อง <#${roster.channelId}> | ${createdAt}`
+        ].join("\n")
+      )
+    );
+
+    if (idx < shownRosters.length - 1) {
+      container.addSeparatorComponents(new SeparatorBuilder());
+    }
+  });
+
+  if (hiddenCount > 0) {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `_และยังมีอีก ${hiddenCount} รายการ (จำกัดการแสดงผลเพื่อให้อ่านง่าย)_`
+        )
+      );
+  }
+
+  return [container];
+}
+
 module.exports = {
   buildMenuComponentsV2,
+  buildMyRosterComponentsV2,
   buildMyRosterEmbed,
   buildRegisterButton,
   buildRegisterModal,
   buildRegistrationEmbed,
   buildRegistrationPanelEmbed,
   buildRosterActionRow,
+  buildRosterComponentsV2,
   buildRosterEmbed,
+  buildRosterListComponentsV2,
   buildRosterListEmbed,
   buildRosterPickerMenu,
   buildSetTeamModal,

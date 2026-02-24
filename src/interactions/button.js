@@ -1,4 +1,9 @@
-const { ActionRowBuilder, ButtonStyle, PermissionFlagsBits } = require("discord.js");
+const {
+  ActionRowBuilder,
+  ButtonStyle,
+  MessageFlags,
+  PermissionFlagsBits
+} = require("discord.js");
 const { MENU_BUTTONS, REGISTER_BUTTON_ID } = require("../constants");
 const {
   addMemberToRoster,
@@ -10,7 +15,7 @@ const {
   removeMemberFromRoster
 } = require("../store");
 const {
-  buildMyRosterEmbed,
+  buildMyRosterComponentsV2,
   buildRegisterButton,
   buildRegisterModal,
   buildRosterListEmbed,
@@ -41,8 +46,10 @@ async function handleButton(interaction) {
   if (interaction.customId === MENU_BUTTONS.myRoster) {
     const profile = getMemberInfo(interaction.guildId, interaction.user.id);
     const rosters = getUserRostersInGuild(interaction.guildId, interaction.user.id, 25);
-    const embed = buildMyRosterEmbed(interaction.user, profile, rosters);
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.reply({
+      components: buildMyRosterComponentsV2(interaction.user, profile, rosters),
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral
+    });
     return;
   }
 
@@ -79,7 +86,8 @@ async function handleButton(interaction) {
         new ActionRowBuilder().addComponents(
           buildRosterPickerMenu("show_roster_pick", "เลือกกิจกรรมที่ต้องการแสดง", rosters)
         )
-      ]
+      ],
+      ephemeral: true
     });
     return;
   }
@@ -143,7 +151,7 @@ async function handleButton(interaction) {
       return;
     }
 
-    await interaction.showModal(buildSetTeamModal([targetRoster]));
+    await interaction.showModal(buildSetTeamModal(targetRoster));
     return;
   }
 
