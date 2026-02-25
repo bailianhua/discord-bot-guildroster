@@ -4,7 +4,9 @@ const MENU_BUTTONS = {
   register: "menu_register",
   myRoster: "menu_myroster",
   rosterList: "menu_roster_list",
+  startRoster: "menu_start_roster",
   showRoster: "menu_show_roster",
+  announceRoster: "menu_announce_roster",
   deleteRoster: "menu_delete_roster"
 };
 

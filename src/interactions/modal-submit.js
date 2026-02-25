@@ -1,20 +1,93 @@
-const { PermissionFlagsBits } = require("discord.js");
 const {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  MessageFlags,
+  PermissionFlagsBits
+} = require("discord.js");
+const {
+  createRoster,
   getMemberInfo,
   getRoster,
   getRosterEntries,
   setMemberInfo,
   setMemberTeamInRoster
 } = require("../store");
-const { buildRegistrationEmbed, buildRosterEmbed } = require("../ui/builders");
+const {
+  buildRegisterButton,
+  buildRegistrationEmbed,
+  buildRosterActionRow,
+  buildRosterExportRow,
+  buildRosterEmbed
+} = require("../ui/builders");
+const { getMissingPostPerms } = require("../services/permissions");
 const { syncRosterMessage } = require("../services/roster-messages");
 
 async function handleModalSubmit(interaction) {
   if (!interaction.guildId) {
     await interaction.reply({
       content: "กรุณาใช้ระบบนี้ในเซิร์ฟเวอร์",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
+    return;
+  }
+
+  if (interaction.customId === "start_roster_modal") {
+    if (
+      !interaction.memberPermissions ||
+      !interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild)
+    ) {
+      await interaction.reply({
+        content: "เฉพาะผู้ดูแลระบบเท่านั้นที่เริ่มลงชื่อกิจกรรมได้",
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+
+    const missingPerms = getMissingPostPerms(interaction.channel, interaction.client.user.id);
+    if (missingPerms.length > 0) {
+      await interaction.reply({
+        content: `ไม่สามารถสร้างกิจกรรมได้เนื่องจากขาดสิทธิ์: ${missingPerms.join(
+          ", "
+        )}`,
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+
+    const titleInput = interaction.fields.getTextInputValue("start_roster_title").trim();
+    const title = titleInput || "ลงชื่อสมาชิกกิลด์";
+    const pendingEmbed = buildRosterEmbed(title, []);
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("pending")
+        .setLabel("เข้าร่วมกิจกรรม")
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(true),
+      buildRegisterButton(ButtonStyle.Secondary)
+    );
+
+    await interaction.reply({
+      content: "กำลังสร้างโพสต์ลงชื่อกิจกรรม...",
+      flags: MessageFlags.Ephemeral
+    });
+
+    const rosterMessage = await interaction.channel.send({
+      embeds: [pendingEmbed],
+      components: [row]
+    });
+
+    createRoster({
+      messageId: rosterMessage.id,
+      guildId: interaction.guildId,
+      channelId: interaction.channelId,
+      title,
+      createdBy: interaction.user.id
+    });
+
+    const liveRow = buildRosterActionRow(rosterMessage.id);
+    const exportRow = buildRosterExportRow(rosterMessage.id);
+    await rosterMessage.edit({ components: [liveRow, exportRow] });
     return;
   }
 
@@ -25,7 +98,7 @@ async function handleModalSubmit(interaction) {
     ) {
       await interaction.reply({
         content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ตั้งทีมได้",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -38,7 +111,7 @@ async function handleModalSubmit(interaction) {
     if (members.length === 0) {
       await interaction.reply({
         content: "ไม่พบสมาชิกที่เลือก กรุณาลองใหม่",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -51,7 +124,7 @@ async function handleModalSubmit(interaction) {
     if (!targetRosterId) {
       await interaction.reply({
         content: "ไม่พบกิจกรรมที่ต้องการตั้งทีม กรุณาเปิดผ่าน /setteam หรือปุ่มตั้งทีมในกิจกรรม",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -60,7 +133,7 @@ async function handleModalSubmit(interaction) {
     if (!targetRoster) {
       await interaction.reply({
         content: "ไม่พบกิจกรรมที่เลือก อาจถูกลบไปแล้ว กรุณาลองใหม่",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -104,7 +177,7 @@ async function handleModalSubmit(interaction) {
       }
       await interaction.reply({
         content: lines.join("\n"),
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -141,7 +214,7 @@ async function handleModalSubmit(interaction) {
     await interaction.reply({
       content: summaryLines.join("\n"),
       embeds: [embed],
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -167,7 +240,7 @@ async function handleModalSubmit(interaction) {
         weapon
       }).setFooter({ text: "บันทึกการลงทะเบียนแล้ว พิมพ์ /register เพื่ออัปเดตข้อมูลได้ตลอดเวลา" })
     ],
-    ephemeral: true
+    flags: MessageFlags.Ephemeral
   });
 }
 

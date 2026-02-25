@@ -1,5 +1,6 @@
 const {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonStyle,
   MessageFlags,
   PermissionFlagsBits
@@ -11,6 +12,7 @@ const {
   getRecentRostersInChannel,
   getRecentRostersInGuild,
   getRoster,
+  getRosterEntries,
   getUserRostersInGuild,
   removeMemberFromRoster
 } = require("../store");
@@ -20,15 +22,17 @@ const {
   buildRegisterModal,
   buildRosterListEmbed,
   buildRosterPickerMenu,
+  buildStartRosterModal,
   buildSetTeamModal
 } = require("../ui/builders");
+const { buildRosterCsvBuffer } = require("../services/roster-export");
 const { syncRosterMessage } = require("../services/roster-messages");
 
 async function handleButton(interaction) {
   if (!interaction.guildId) {
     await interaction.reply({
       content: "ปุ่มนี้ใช้งานได้เฉพาะในเซิร์ฟเวอร์เท่านั้น",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -58,15 +62,31 @@ async function handleButton(interaction) {
     if (rosters.length === 0) {
       await interaction.reply({
         content: "ยังไม่มีกิจกรรมที่ถูกสร้างในเซิร์ฟเวอร์นี้",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
 
     await interaction.reply({
       embeds: [buildRosterListEmbed(rosters)],
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
+    return;
+  }
+
+  if (interaction.customId === MENU_BUTTONS.startRoster) {
+    if (
+      !interaction.memberPermissions ||
+      !interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild)
+    ) {
+      await interaction.reply({
+        content: "เฉพาะผู้ดูแลระบบเท่านั้นที่เริ่มลงชื่อกิจกรรมได้",
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+
+    await interaction.showModal(buildStartRosterModal());
     return;
   }
 
@@ -75,7 +95,7 @@ async function handleButton(interaction) {
     if (rosters.length === 0) {
       await interaction.reply({
         content: "ยังไม่มีกิจกรรมที่ถูกสร้างในเซิร์ฟเวอร์นี้",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -87,7 +107,44 @@ async function handleButton(interaction) {
           buildRosterPickerMenu("show_roster_pick", "เลือกกิจกรรมที่ต้องการแสดง", rosters)
         )
       ],
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
+    });
+    return;
+  }
+
+  if (interaction.customId === MENU_BUTTONS.announceRoster) {
+    if (
+      !interaction.memberPermissions ||
+      !interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild)
+    ) {
+      await interaction.reply({
+        content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ประกาศกิจกรรมได้",
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+
+    const rosters = getRecentRostersInGuild(interaction.guildId, 25);
+    if (rosters.length === 0) {
+      await interaction.reply({
+        content: "ยังไม่มีกิจกรรมที่ถูกสร้างในเซิร์ฟเวอร์นี้",
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+
+    await interaction.reply({
+      content: "เลือกกิจกรรมที่ต้องการประกาศในช่องนี้",
+      components: [
+        new ActionRowBuilder().addComponents(
+          buildRosterPickerMenu(
+            "announce_roster_pick",
+            "เลือกกิจกรรมที่ต้องการประกาศ",
+            rosters
+          )
+        )
+      ],
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -99,7 +156,7 @@ async function handleButton(interaction) {
     ) {
       await interaction.reply({
         content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ลบกิจกรรมได้",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -112,7 +169,7 @@ async function handleButton(interaction) {
     if (rosters.length === 0) {
       await interaction.reply({
         content: "ไม่พบกิจกรรมในช่องนี้",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -124,7 +181,30 @@ async function handleButton(interaction) {
           buildRosterPickerMenu("delete_roster_pick", "เลือกกิจกรรมที่ต้องการลบ", rosters)
         )
       ],
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
+    });
+    return;
+  }
+
+  if (interaction.customId.startsWith("download_roster_excel:")) {
+    const messageId = interaction.customId.split(":")[1];
+    const targetRoster = getRoster(messageId);
+    const data = getRosterEntries(messageId);
+    if (!targetRoster || !data) {
+      await interaction.reply({
+        content: "ไม่พบกิจกรรมนี้แล้ว",
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+
+    const { buffer, fileName } = buildRosterCsvBuffer(targetRoster.title, data.entries);
+    const file = new AttachmentBuilder(buffer, { name: fileName });
+
+    await interaction.reply({
+      content: `ดาวน์โหลดไฟล์กิจกรรม \`${targetRoster.title}\` ได้ที่ไฟล์แนบด้านล่าง`,
+      files: [file],
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -136,7 +216,7 @@ async function handleButton(interaction) {
     ) {
       await interaction.reply({
         content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ตั้งทีมได้",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -146,7 +226,7 @@ async function handleButton(interaction) {
     if (!targetRoster) {
       await interaction.reply({
         content: "ไม่พบกิจกรรมนี้แล้ว",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -164,7 +244,7 @@ async function handleButton(interaction) {
   if (!roster) {
     await interaction.reply({
       content: "ไม่พบกิจกรรมนี้แล้ว",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -174,7 +254,7 @@ async function handleButton(interaction) {
     if (!leaveResult || !leaveResult.removed) {
       await interaction.reply({
         content: "คุณยังไม่ได้ลงชื่อในกิจกรรมนี้",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -183,7 +263,7 @@ async function handleButton(interaction) {
 
     await interaction.reply({
       content: "ยกเลิกการลงชื่อกิจกรรมเรียบร้อยแล้ว",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -197,7 +277,7 @@ async function handleButton(interaction) {
           buildRegisterButton(ButtonStyle.Primary)
         )
       ],
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -207,7 +287,7 @@ async function handleButton(interaction) {
 
   await interaction.reply({
     content: `เข้าร่วมกิจกรรมในชื่อ **${profile.ign}** เรียบร้อย!`,
-    ephemeral: true
+    flags: MessageFlags.Ephemeral
   });
 }
 

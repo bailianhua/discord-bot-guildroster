@@ -10,7 +10,19 @@ const commands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder()
     .setName("menu")
-    .setDescription("โพสต์เมนูคำสั่งแบบกดปุ่มไว้ในแชท"),
+    .setDescription("เปิดเมนูคำสั่งแบบกดปุ่ม (เห็นเฉพาะคุณ)"),
+  new SlashCommandBuilder()
+    .setName("pinmenu")
+    .setDescription("โพสต์เมนูแบบสาธารณะในช่องนี้")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder()
+    .setName("triggerweeklybatch")
+    .setDescription("สั่งสร้างโรสเตอร์ประจำสัปดาห์ (เสาร์+อาทิตย์) ทันที")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder()
+    .setName("clearoldroster")
+    .setDescription("ลบโรสเตอร์อัตโนมัติทั้งหมดในช่องเป้าหมาย")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder()
     .setName("startroster")
     .setDescription("เริ่มโพสต์ลงชื่อกิจกรรม (Roster)")

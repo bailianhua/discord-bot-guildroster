@@ -48,7 +48,7 @@ function getMemberInfo(guildId, userId) {
   return store.members[guildId]?.[userId] || null;
 }
 
-function createRoster({ messageId, guildId, channelId, title, createdBy }) {
+function createRoster({ messageId, guildId, channelId, title, createdBy, meta = null }) {
   const store = readStore();
   store.rosters[messageId] = {
     messageId,
@@ -58,7 +58,8 @@ function createRoster({ messageId, guildId, channelId, title, createdBy }) {
     createdBy,
     createdAt: new Date().toISOString(),
     memberIds: [],
-    memberTeams: {}
+    memberTeams: {},
+    ...(meta && typeof meta === "object" ? { meta } : {})
   };
   writeStore(store);
   return store.rosters[messageId];
@@ -91,6 +92,13 @@ function getRecentRostersInGuild(guildId, limit = 25) {
     .filter((r) => r.guildId === guildId)
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .slice(0, limit);
+}
+
+function getAllRostersInGuild(guildId) {
+  const store = readStore();
+  return Object.values(store.rosters)
+    .filter((r) => r.guildId === guildId)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 
 function getUserRostersInGuild(guildId, userId, limit = 25) {
@@ -204,6 +212,7 @@ module.exports = {
   addMemberToRoster,
   createRoster,
   deleteRoster,
+  getAllRostersInGuild,
   getLatestRosterInChannel,
   getRecentRostersInGuild,
   getRecentRostersInChannel,

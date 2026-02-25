@@ -3,6 +3,7 @@ require("dotenv").config();
 const { Client, GatewayIntentBits } = require("discord.js");
 const { deployCommands } = require("./services/deploy-commands");
 const { handleInteractionCreate } = require("./interactions");
+const { startWeeklyRosterScheduler } = require("./services/weekly-roster-scheduler");
 
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.DISCORD_CLIENT_ID;
@@ -23,6 +24,7 @@ const client = new Client({
 
 client.once("clientReady", () => {
   console.log(`Bot ready as ${client.user.tag}`);
+  startWeeklyRosterScheduler(client, { defaultGuildId: guildId });
 });
 
 client.on("interactionCreate", async (interaction) => {

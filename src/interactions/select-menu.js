@@ -17,7 +17,7 @@ async function handleSelectMenu(interaction) {
   if (!interaction.guildId) {
     await interaction.reply({
       content: "เมนูนี้ใช้ได้เฉพาะในเซิร์ฟเวอร์เท่านั้น",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -39,7 +39,7 @@ async function handleSelectMenu(interaction) {
     ) {
       await interaction.reply({
         content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ตั้งทีมได้",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -55,7 +55,7 @@ async function handleSelectMenu(interaction) {
     ) {
       await interaction.reply({
         content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ประกาศกิจกรรมได้",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -125,7 +125,7 @@ async function handleSelectMenu(interaction) {
   ) {
     await interaction.reply({
       content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ลบกิจกรรมได้",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }

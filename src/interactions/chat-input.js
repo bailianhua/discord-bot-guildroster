@@ -19,12 +19,17 @@ const {
   buildRegisterModal,
   buildRegistrationPanelEmbed,
   buildRosterActionRow,
+  buildRosterExportRow,
   buildRosterEmbed,
   buildRosterListComponentsV2,
   buildRosterPickerMenu,
   buildSetTeamModal
 } = require("../ui/builders");
 const { getMissingPostPerms } = require("../services/permissions");
+const {
+  clearOldAutoRostersOnce,
+  runWeeklyRosterBatchOnce
+} = require("../services/weekly-roster-scheduler");
 
 function isManageGuild(interaction) {
   return Boolean(
@@ -33,11 +38,17 @@ function isManageGuild(interaction) {
   );
 }
 
+function eventLabel(eventKey) {
+  if (eventKey === "sat") return "Saturday";
+  if (eventKey === "sun") return "Sunday";
+  return eventKey;
+}
+
 async function handleChatInput(interaction, { client }) {
   if (!interaction.guildId) {
     await interaction.reply({
       content: "กรุณาใช้คำสั่งนี้ในเซิร์ฟเวอร์เท่านั้น",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -51,7 +62,7 @@ async function handleChatInput(interaction, { client }) {
     if (!isManageGuild(interaction)) {
       await interaction.reply({
         content: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถใช้คำสั่งนี้ได้",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -62,7 +73,7 @@ async function handleChatInput(interaction, { client }) {
         content: `ไม่สามารถโพสต์แผงควบคุมได้เนื่องจากขาดสิทธิ์: ${missingPerms.join(
           ", "
         )}`,
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -78,12 +89,28 @@ async function handleChatInput(interaction, { client }) {
 
     await interaction.reply({
       content: "โพสต์แผงลงทะเบียนเรียบร้อยแล้ว",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
 
   if (interaction.commandName === "menu") {
+    await interaction.reply({
+      components: buildMenuComponentsV2(),
+      flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral
+    });
+    return;
+  }
+
+  if (interaction.commandName === "pinmenu") {
+    if (!isManageGuild(interaction)) {
+      await interaction.reply({
+        content: "เฉพาะผู้ดูแลระบบเท่านั้นที่โพสต์เมนูถาวรได้",
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+
     const missingPerms = getMissingPostPerms(interaction.channel, client.user.id, {
       needsEmbed: false
     });
@@ -92,14 +119,133 @@ async function handleChatInput(interaction, { client }) {
         content: `ไม่สามารถโพสต์เมนูได้เนื่องจากขาดสิทธิ์: ${missingPerms.join(
           ", "
         )}`,
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+
+    const menuMessage = await interaction.channel.send({
+      components: buildMenuComponentsV2(),
+      flags: MessageFlags.IsComponentsV2
+    });
+
+    await interaction.reply({
+      content: `โพสต์เมนูแบบสาธารณะเรียบร้อยแล้ว: ${menuMessage.url}`,
+      flags: MessageFlags.Ephemeral
+    });
+    return;
+  }
+
+  if (interaction.commandName === "triggerweeklybatch") {
+    if (!isManageGuild(interaction)) {
+      await interaction.reply({
+        content: "เฉพาะผู้ดูแลระบบเท่านั้นที่สั่งสร้างโรสเตอร์อัตโนมัติได้",
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+
+    const targetGuildId = process.env.AUTO_ROSTER_GUILD_ID || interaction.guildId;
+    const targetChannelId = process.env.AUTO_ROSTER_CHANNEL_ID || interaction.channelId;
+    const targetTimeZone = process.env.AUTO_ROSTER_TIMEZONE || "Asia/Bangkok";
+
+    const result = await runWeeklyRosterBatchOnce(client, {
+      guildId: targetGuildId,
+      channelId: targetChannelId,
+      timeZone: targetTimeZone,
+      eventKeys: ["sat", "sun"]
+    });
+
+    if (result.error === "GUILD_NOT_FOUND") {
+      await interaction.reply({
+        content: "ไม่พบเซิร์ฟเวอร์เป้าหมายสำหรับการสร้างโรสเตอร์อัตโนมัติ",
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+    if (result.error === "CHANNEL_NOT_FOUND") {
+      await interaction.reply({
+        content: "ไม่พบช่องเป้าหมายสำหรับการสร้างโรสเตอร์อัตโนมัติ",
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+    if (result.error === "MISSING_PERMS") {
+      await interaction.reply({
+        content: `บอทขาดสิทธิ์ในช่องเป้าหมาย: ${result.missingPerms.join(", ")}`,
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+
+    const createdText =
+      result.created.length > 0
+        ? result.created.map(eventLabel).join(", ")
+        : "-";
+    const existsText =
+      result.exists.length > 0
+        ? result.exists.map(eventLabel).join(", ")
+        : "-";
+    const skippedText =
+      result.skipped.length > 0
+        ? result.skipped.map(eventLabel).join(", ")
+        : "-";
+
+    await interaction.reply({
+      content: [
+        `สั่งรัน weekly batch เรียบร้อย (week: ${result.weekKey})`,
+        `ช่องเป้าหมาย: <#${targetChannelId}>`,
+        `สร้างใหม่: ${createdText}`,
+        `มีอยู่แล้ว: ${existsText}`,
+        `ข้าม: ${skippedText}`,
+        `ลบโรสเตอร์เก่า: ${result.cleanupCount} รายการ`
+      ].join("\n"),
+      flags: MessageFlags.Ephemeral
+    });
+    return;
+  }
+
+  if (interaction.commandName === "clearoldroster") {
+    if (!isManageGuild(interaction)) {
+      await interaction.reply({
+        content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ลบโรสเตอร์อัตโนมัติได้",
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+
+    const targetGuildId = process.env.AUTO_ROSTER_GUILD_ID || interaction.guildId;
+    const targetChannelId = process.env.AUTO_ROSTER_CHANNEL_ID || interaction.channelId;
+    const targetTimeZone = process.env.AUTO_ROSTER_TIMEZONE || "Asia/Bangkok";
+    const result = await clearOldAutoRostersOnce(client, {
+      guildId: targetGuildId,
+      channelId: targetChannelId,
+      timeZone: targetTimeZone
+    });
+
+    if (result.error === "GUILD_NOT_FOUND") {
+      await interaction.reply({
+        content: "ไม่พบเซิร์ฟเวอร์เป้าหมายสำหรับการลบโรสเตอร์อัตโนมัติ",
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+    if (result.error === "CHANNEL_NOT_FOUND") {
+      await interaction.reply({
+        content: "ไม่พบช่องเป้าหมายสำหรับการลบโรสเตอร์อัตโนมัติ",
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
 
     await interaction.reply({
-      components: buildMenuComponentsV2(),
-      flags: MessageFlags.IsComponentsV2
+      content: [
+        `ลบโรสเตอร์อัตโนมัติเรียบร้อย (รวมสัปดาห์ปัจจุบัน)`,
+        `ช่องเป้าหมาย: <#${targetChannelId}>`,
+        `week ปัจจุบัน: ${result.weekKey}`,
+        `จำนวนที่ลบ: ${result.deletedCount} รายการ`
+      ].join("\n"),
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -108,7 +254,7 @@ async function handleChatInput(interaction, { client }) {
     if (!isManageGuild(interaction)) {
       await interaction.reply({
         content: "เฉพาะผู้ดูแลระบบเท่านั้นที่เริ่มลงชื่อกิจกรรมได้",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -119,7 +265,7 @@ async function handleChatInput(interaction, { client }) {
         content: `ไม่สามารถสร้างกิจกรรมได้เนื่องจากขาดสิทธิ์: ${missingPerms.join(
           ", "
         )}`,
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -137,7 +283,7 @@ async function handleChatInput(interaction, { client }) {
 
     await interaction.reply({
       content: "กำลังสร้างโพสต์ลงชื่อกิจกรรม...",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
 
     const rosterMessage = await interaction.channel.send({
@@ -154,7 +300,8 @@ async function handleChatInput(interaction, { client }) {
     });
 
     const liveRow = buildRosterActionRow(rosterMessage.id);
-    await rosterMessage.edit({ components: [liveRow] });
+    const exportRow = buildRosterExportRow(rosterMessage.id);
+    await rosterMessage.edit({ components: [liveRow, exportRow] });
     return;
   }
 
@@ -163,7 +310,7 @@ async function handleChatInput(interaction, { client }) {
     if (rosters.length === 0) {
       await interaction.reply({
         content: "ยังไม่มีกิจกรรมที่ถูกสร้างในเซิร์ฟเวอร์นี้",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -180,7 +327,7 @@ async function handleChatInput(interaction, { client }) {
     if (rosters.length === 0) {
       await interaction.reply({
         content: "ยังไม่มีกิจกรรมที่ถูกสร้างในเซิร์ฟเวอร์นี้",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -192,7 +339,7 @@ async function handleChatInput(interaction, { client }) {
           buildRosterPickerMenu("show_roster_pick", "เลือกกิจกรรมที่ต้องการแสดง", rosters)
         )
       ],
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -201,7 +348,7 @@ async function handleChatInput(interaction, { client }) {
     if (!isManageGuild(interaction)) {
       await interaction.reply({
         content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ประกาศกิจกรรมได้",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -210,7 +357,7 @@ async function handleChatInput(interaction, { client }) {
     if (rosters.length === 0) {
       await interaction.reply({
         content: "ยังไม่มีกิจกรรมที่ถูกสร้างในเซิร์ฟเวอร์นี้",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -226,7 +373,7 @@ async function handleChatInput(interaction, { client }) {
           )
         )
       ],
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -250,7 +397,7 @@ async function handleChatInput(interaction, { client }) {
     if (!isManageGuild(interaction)) {
       await interaction.reply({
         content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ตั้งทีมได้",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -259,7 +406,7 @@ async function handleChatInput(interaction, { client }) {
     if (rosters.length === 0) {
       await interaction.reply({
         content: "ยังไม่มีกิจกรรมที่ถูกสร้างในเซิร์ฟเวอร์นี้",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -271,7 +418,7 @@ async function handleChatInput(interaction, { client }) {
           buildRosterPickerMenu("setteam_roster_pick", "เลือกกิจกรรมที่ต้องการตั้งทีม", rosters)
         )
       ],
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -280,7 +427,7 @@ async function handleChatInput(interaction, { client }) {
     if (!isManageGuild(interaction)) {
       await interaction.reply({
         content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ลบกิจกรรมได้",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -293,7 +440,7 @@ async function handleChatInput(interaction, { client }) {
     if (rosters.length === 0) {
       await interaction.reply({
         content: "ไม่พบกิจกรรมในช่องนี้",
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -305,7 +452,7 @@ async function handleChatInput(interaction, { client }) {
           buildRosterPickerMenu("delete_roster_pick", "เลือกกิจกรรมที่ต้องการลบ", rosters)
         )
       ],
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   }
 }

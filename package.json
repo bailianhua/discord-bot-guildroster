@@ -6,7 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node src/index.js",
-    "check": "node --check src/index.js && node --check src/store.js && node --check src/commands.js && node --check src/constants.js && node --check src/config/select-options.js && node --check src/ui/builders.js && node --check src/services/deploy-commands.js && node --check src/services/permissions.js && node --check src/services/roster-messages.js && node --check src/interactions/index.js && node --check src/interactions/chat-input.js && node --check src/interactions/select-menu.js && node --check src/interactions/modal-submit.js && node --check src/interactions/button.js"
+    "check": "node --check src/index.js && node --check src/store.js && node --check src/commands.js && node --check src/constants.js && node --check src/config/select-options.js && node --check src/ui/builders.js && node --check src/services/deploy-commands.js && node --check src/services/permissions.js && node --check src/services/roster-messages.js && node --check src/services/roster-export.js && node --check src/services/weekly-roster-scheduler.js && node --check src/interactions/index.js && node --check src/interactions/chat-input.js && node --check src/interactions/select-menu.js && node --check src/interactions/modal-submit.js && node --check src/interactions/button.js"
   },
   "engines": {
     "node": ">=18.17.0"

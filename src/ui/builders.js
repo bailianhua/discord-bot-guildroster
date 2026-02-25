@@ -49,7 +49,7 @@ function buildMenuComponentsV2() {
         [
           "## Guild Menu",
           "กดปุ่มด้านขวาของแต่ละรายการเพื่อใช้งานทันที",
-          "ปุ่มลบกิจกรรมใช้ได้เฉพาะแอดมิน"
+          "ปุ่มเริ่ม/ประกาศ/ลบกิจกรรมใช้ได้เฉพาะแอดมิน"
         ].join("\n")
       )
     )
@@ -86,6 +86,16 @@ function buildMenuComponentsV2() {
         ),
       new SectionBuilder()
         .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("**เริ่มกิจกรรม**\nสร้างโพสต์ลงชื่อกิจกรรมใหม่")
+        )
+        .setButtonAccessory(
+          new ButtonBuilder()
+            .setCustomId(MENU_BUTTONS.startRoster)
+            .setLabel("เริ่ม")
+            .setStyle(ButtonStyle.Primary)
+        ),
+      new SectionBuilder()
+        .addTextDisplayComponents(
           new TextDisplayBuilder().setContent("**เลือกดูกิจกรรม**\nเลือกกิจกรรมและดูรายละเอียด")
         )
         .setButtonAccessory(
@@ -93,6 +103,16 @@ function buildMenuComponentsV2() {
             .setCustomId(MENU_BUTTONS.showRoster)
             .setLabel("เลือก")
             .setStyle(ButtonStyle.Success)
+        ),
+      new SectionBuilder()
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("**ประกาศกิจกรรม**\nเลือกกิจกรรมแล้วประกาศในช่องนี้")
+        )
+        .setButtonAccessory(
+          new ButtonBuilder()
+            .setCustomId(MENU_BUTTONS.announceRoster)
+            .setLabel("ประกาศ")
+            .setStyle(ButtonStyle.Secondary)
         ),
       new SectionBuilder()
         .addTextDisplayComponents(
@@ -131,6 +151,15 @@ function buildRosterActionRow(messageId) {
       .setLabel("ตั้งทีม (แอดมิน)")
       .setStyle(ButtonStyle.Secondary),
     buildRegisterButton(ButtonStyle.Secondary)
+  );
+}
+
+function buildRosterExportRow(messageId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`download_roster_excel:${messageId}`)
+      .setLabel("ดาวน์โหลด Excel")
+      .setStyle(ButtonStyle.Secondary)
   );
 }
 
@@ -182,6 +211,30 @@ function buildRegisterModal() {
   return modal;
 }
 
+function buildStartRosterModal() {
+  const modal = new ModalBuilder()
+    .setCustomId("start_roster_modal")
+    .setTitle("เริ่มกิจกรรม");
+
+  const titleInput = {
+    type: 4,
+    custom_id: "start_roster_title",
+    style: TextInputStyle.Short,
+    required: false,
+    max_length: 80,
+    placeholder: "ลงชื่อสมาชิกกิลด์"
+  };
+
+  modal.addLabelComponents(
+    new LabelBuilder()
+      .setLabel("หัวข้อกิจกรรม (ไม่บังคับ)")
+      .setDescription("เว้นว่างเพื่อใช้หัวข้อเริ่มต้น")
+      .setTextInputComponent(titleInput)
+  );
+
+  return modal;
+}
+
 function buildSetTeamModal(roster) {
   const modal = new ModalBuilder()
     .setCustomId(`setteam_modal:${roster.messageId}`)
@@ -222,6 +275,60 @@ function truncateLabel(text, max = 100) {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 
+function splitLinesIntoChunks(lines, maxChars) {
+  if (!Array.isArray(lines) || lines.length === 0) {
+    return [];
+  }
+
+  const chunks = [];
+  let current = "";
+
+  const pushLine = (line) => {
+    if (!line) return;
+    if (!current) {
+      current = line;
+      return;
+    }
+
+    const next = `${current}\n${line}`;
+    if (next.length <= maxChars) {
+      current = next;
+      return;
+    }
+
+    chunks.push(current);
+    current = line;
+  };
+
+  for (const rawLine of lines) {
+    const line = String(rawLine ?? "");
+    if (line.length <= maxChars) {
+      pushLine(line);
+      continue;
+    }
+
+    if (current) {
+      chunks.push(current);
+      current = "";
+    }
+
+    for (let i = 0; i < line.length; i += maxChars) {
+      const segment = line.slice(i, i + maxChars);
+      if (segment.length === maxChars) {
+        chunks.push(segment);
+      } else {
+        current = segment;
+      }
+    }
+  }
+
+  if (current) {
+    chunks.push(current);
+  }
+
+  return chunks;
+}
+
 function buildRosterEmbed(title, entries) {
   const pathLabelByValue = Object.fromEntries(
     PATH_OPTIONS.map((option) => [option.value, option.label])
@@ -255,22 +362,20 @@ function buildRosterEmbed(title, entries) {
     return `${idx + 1}. <@${entry.userId}> | ${p.ign} | ${pathLabel} | ${weaponLabel}`;
   };
 
-  const formatBucket = (list) => {
-    if (list.length === 0) return "ไม่มีสมาชิก";
-    const lines = list.map((entry, idx) => formatMemberLine(entry, idx));
-    const maxChars = 1000;
-    const joined = lines.join("\n");
-    if (joined.length <= maxChars) return joined;
-
-    let kept = [];
-    let used = 0;
-    for (const line of lines) {
-      if (used + line.length + 1 > maxChars - 24) break;
-      kept.push(line);
-      used += line.length + 1;
+  const buildBucketFields = (bucketLabel, list) => {
+    if (list.length === 0) {
+      return [{ name: `${bucketLabel} (0)`, value: "ไม่มีสมาชิก" }];
     }
-    const hidden = lines.length - kept.length;
-    return `${kept.join("\n")}\n...และอีก ${hidden} คน`;
+
+    const lines = list.map((entry, idx) => formatMemberLine(entry, idx));
+    const chunks = splitLinesIntoChunks(lines, 1000);
+    return chunks.map((chunk, idx) => ({
+      name:
+        idx === 0
+          ? `${bucketLabel} (${list.length})`
+          : `${bucketLabel} (ต่อ ${idx + 1}/${chunks.length})`,
+      value: chunk
+    }));
   };
 
   const total = entries.length;
@@ -278,25 +383,18 @@ function buildRosterEmbed(title, entries) {
   const defenseCount = buckets.defense.length;
   const unassignedCount = buckets.unassigned.length;
 
+  const fields = [
+    ...buildBucketFields("Attack Team", buckets.attack),
+    ...buildBucketFields("Defense Team", buckets.defense),
+    ...buildBucketFields("Unassigned", buckets.unassigned)
+  ];
+
   return new EmbedBuilder()
     .setTitle(title)
     .setDescription(
       `สมาชิกทั้งหมด ${total} คน | Attack ${attackCount} | Defense ${defenseCount} | Unassigned ${unassignedCount}`
     )
-    .addFields(
-      {
-        name: `Attack Team (${attackCount})`,
-        value: formatBucket(buckets.attack)
-      },
-      {
-        name: `Defense Team (${defenseCount})`,
-        value: formatBucket(buckets.defense)
-      },
-      {
-        name: `Unassigned (${unassignedCount})`,
-        value: formatBucket(buckets.unassigned)
-      }
-    )
+    .addFields(fields)
     .setColor(0x00b894)
     .setTimestamp();
 }
@@ -334,22 +432,10 @@ function buildRosterComponentsV2(title, entries, rosterMessageId) {
     return `${idx + 1}. <@${entry.userId}> | ${p.ign} | ${pathLabel} | ${weaponLabel}`;
   };
 
-  const formatBucket = (list) => {
-    if (list.length === 0) return "ไม่มีสมาชิก";
+  const splitBucketChunks = (list, maxChars = 3400) => {
+    if (list.length === 0) return ["ไม่มีสมาชิก"];
     const lines = list.map((entry, idx) => formatMemberLine(entry, idx));
-    const maxChars = 1400;
-    const joined = lines.join("\n");
-    if (joined.length <= maxChars) return joined;
-
-    let kept = [];
-    let used = 0;
-    for (const line of lines) {
-      if (used + line.length + 1 > maxChars - 24) break;
-      kept.push(line);
-      used += line.length + 1;
-    }
-    const hidden = lines.length - kept.length;
-    return `${kept.join("\n")}\n...และอีก ${hidden} คน`;
+    return splitLinesIntoChunks(lines, maxChars);
   };
 
   const total = entries.length;
@@ -360,35 +446,39 @@ function buildRosterComponentsV2(title, entries, rosterMessageId) {
   const container = new ContainerBuilder()
     .setAccentColor(0x00b894)
     .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `## ${truncateLabel(title || "รายละเอียดกิจกรรม", 80)}`
-      ),
+      new TextDisplayBuilder().setContent(`## ${title || "รายละเอียดกิจกรรม"}`),
       new TextDisplayBuilder().setContent(
         `สมาชิกทั้งหมด ${total} คน | Attack ${attackCount} | Defense ${defenseCount} | Unassigned ${unassignedCount}`
       )
-    )
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `### Attack Team (${attackCount})\n${formatBucket(buckets.attack)}`
-      )
-    )
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `### Defense Team (${defenseCount})\n${formatBucket(buckets.defense)}`
-      )
-    )
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(
-        `### Unassigned (${unassignedCount})\n${formatBucket(buckets.unassigned)}`
-      )
     );
+
+  const addBucketSection = (teamLabel, list) => {
+    const chunks = splitBucketChunks(list);
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### ${teamLabel} (${list.length})\n${chunks[0]}`
+        )
+      );
+
+    for (let i = 1; i < chunks.length; i += 1) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### ${teamLabel} (ต่อ ${i + 1}/${chunks.length})\n${chunks[i]}`
+        )
+      );
+    }
+  };
+
+  addBucketSection("Attack Team", buckets.attack);
+  addBucketSection("Defense Team", buckets.defense);
+  addBucketSection("Unassigned", buckets.unassigned);
 
   if (rosterMessageId) {
     container.addSeparatorComponents(new SeparatorBuilder()).addActionRowComponents(
-      buildRosterActionRow(rosterMessageId)
+      buildRosterActionRow(rosterMessageId),
+      buildRosterExportRow(rosterMessageId)
     );
   }
 
@@ -411,17 +501,26 @@ function buildMyRosterEmbed(user, profile, rosters) {
     ? rosters.map((roster, idx) => {
       const createdAt = new Date(roster.createdAt).toLocaleString("th-TH");
       const team = roster.memberTeams?.[user.id] || null;
-      return `${idx + 1}. **${truncateLabel(roster.title, 65)}** | ทีม: ${teamLabel(
+      return `${idx + 1}. **${roster.title || `Roster ${roster.messageId}`}** | ทีม: ${teamLabel(
         team
       )} | <#${roster.channelId}> | ${createdAt}`;
-    }).join("\n")
-    : "ยังไม่พบกิจกรรมที่คุณเข้าร่วมหรือถูกกำหนดทีม";
+    })
+    : ["ยังไม่พบกิจกรรมที่คุณเข้าร่วมหรือถูกกำหนดทีม"];
+
+  const rosterChunks = splitLinesIntoChunks(rosterLines, 1000);
+  const rosterFields = rosterChunks.map((chunk, idx) => ({
+    name:
+      idx === 0
+        ? "กิจกรรมของฉัน"
+        : `กิจกรรมของฉัน (ต่อ ${idx + 1}/${rosterChunks.length})`,
+    value: chunk
+  }));
 
   return new EmbedBuilder()
     .setTitle(`ข้อมูลของ ${user.username}`)
     .addFields(
       { name: "โปรไฟล์", value: profileText },
-      { name: "กิจกรรมของฉัน", value: rosterLines }
+      ...rosterFields
     )
     .setColor(0x1abc9c)
     .setTimestamp();
@@ -443,28 +542,31 @@ function buildMyRosterComponentsV2(user, profile, rosters) {
     ? rosters.map((roster, idx) => {
       const createdAt = new Date(roster.createdAt).toLocaleString("th-TH");
       const team = roster.memberTeams?.[user.id] || null;
-      return `${idx + 1}. **${truncateLabel(roster.title, 65)}** | ทีม: ${teamLabel(
+      return `${idx + 1}. **${roster.title || `Roster ${roster.messageId}`}** | ทีม: ${teamLabel(
         team
       )} | <#${roster.channelId}> | ${createdAt}`;
-    }).join("\n")
-    : "ยังไม่พบกิจกรรมที่คุณเข้าร่วมหรือถูกกำหนดทีม";
-
-  const maxRosterChars = 3200;
-  const safeRosterLines =
-    rosterLines.length > maxRosterChars
-      ? `${rosterLines.slice(0, maxRosterChars)}\n...รายการเพิ่มเติมถูกตัด`
-      : rosterLines;
+    })
+    : ["ยังไม่พบกิจกรรมที่คุณเข้าร่วมหรือถูกกำหนดทีม"];
+  const rosterChunks = splitLinesIntoChunks(rosterLines, 3400);
 
   const container = new ContainerBuilder()
     .setAccentColor(0x1abc9c)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`## ข้อมูลของ ${user.username}`),
       new TextDisplayBuilder().setContent(`### โปรไฟล์\n${profileText}`)
-    )
-    .addSeparatorComponents(new SeparatorBuilder())
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`### กิจกรรมของฉัน\n${safeRosterLines}`)
     );
+
+  rosterChunks.forEach((chunk, idx) => {
+    container
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          idx === 0
+            ? `### กิจกรรมของฉัน\n${chunk}`
+            : `### กิจกรรมของฉัน (ต่อ ${idx + 1}/${rosterChunks.length})\n${chunk}`
+        )
+      );
+  });
 
   return [container];
 }
@@ -501,36 +603,28 @@ function buildRosterListEmbed(rosters) {
     const unassignedCount = count - attackCount - defenseCount;
 
     return [
-      `${idx + 1}) **${truncateLabel(roster.title || `Roster ${roster.messageId}`, 70)}**`,
+      `${idx + 1}) **${roster.title || `Roster ${roster.messageId}`}**`,
       `สมาชิก ${count} | A ${attackCount} | D ${defenseCount} | U ${unassignedCount}`,
       `ห้อง <#${roster.channelId}> | ${createdAt}`
     ].join("\n");
   });
 
+  const chunks = splitLinesIntoChunks(lines, 1000);
+  const fields = chunks.map((chunk, idx) => ({
+    name: idx === 0 ? "รายการกิจกรรม" : `รายการกิจกรรม (ต่อ ${idx + 1}/${chunks.length})`,
+    value: chunk
+  }));
+
   return new EmbedBuilder()
     .setTitle("รายการกิจกรรมที่สร้างไว้")
-    .setDescription(lines.join("\n\n"))
+    .addFields(fields)
     .setFooter({ text: "ใช้ /showroster เพื่อเลือกดูรายละเอียดกิจกรรม" })
     .setColor(0x2ecc71)
     .setTimestamp();
 }
 
 function buildRosterListComponentsV2(rosters) {
-  const maxItems = 10;
-  const shownRosters = rosters.slice(0, maxItems);
-  const hiddenCount = rosters.length - shownRosters.length;
-
-  const container = new ContainerBuilder()
-    .setAccentColor(0x2ecc71)
-    .addTextDisplayComponents(
-      new TextDisplayBuilder().setContent("## รายการกิจกรรมที่สร้างไว้"),
-      new TextDisplayBuilder().setContent(
-        `แสดง ${shownRosters.length}/${rosters.length} รายการ | ใช้ \`/showroster\` เพื่อดูรายละเอียดกิจกรรม`
-      )
-    )
-    .addSeparatorComponents(new SeparatorBuilder());
-
-  shownRosters.forEach((roster, idx) => {
+  const lines = rosters.map((roster, idx) => {
     const createdAt = new Date(roster.createdAt).toLocaleString("th-TH");
     const count = roster.memberIds?.length || 0;
     const memberIds = roster.memberIds || [];
@@ -542,30 +636,28 @@ function buildRosterListComponentsV2(rosters) {
     ).length;
     const unassignedCount = count - attackCount - defenseCount;
 
-    container.addTextDisplayComponents(
+    return [
+      `### ${idx + 1}. ${roster.title || `Roster ${roster.messageId}`}`,
+      `**Total:** ${count} | **Attack:** ${attackCount} | **Defense:** ${defenseCount} | **Unassigned:** ${unassignedCount}`,
+      `ห้อง <#${roster.channelId}> | ${createdAt}`
+    ].join("\n");
+  });
+  const chunks = splitLinesIntoChunks(lines, 3400);
+
+  const container = new ContainerBuilder()
+    .setAccentColor(0x2ecc71)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent("## รายการกิจกรรมที่สร้างไว้"),
       new TextDisplayBuilder().setContent(
-        [
-          `### ${idx + 1}. ${truncateLabel(roster.title || `Roster ${roster.messageId}`, 80)}`,
-          `**Total:** ${count} | **Attack:** ${attackCount} | **Defense:** ${defenseCount} | **Unassigned:** ${unassignedCount}`,
-          `ห้อง <#${roster.channelId}> | ${createdAt}`
-        ].join("\n")
+        `แสดงทั้งหมด ${rosters.length} รายการ | ใช้ \`/showroster\` เพื่อดูรายละเอียดกิจกรรม`
       )
     );
 
-    if (idx < shownRosters.length - 1) {
-      container.addSeparatorComponents(new SeparatorBuilder());
-    }
-  });
-
-  if (hiddenCount > 0) {
+  chunks.forEach((chunk) => {
     container
       .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `_และยังมีอีก ${hiddenCount} รายการ (จำกัดการแสดงผลเพื่อให้อ่านง่าย)_`
-        )
-      );
-  }
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(chunk));
+  });
 
   return [container];
 }
@@ -576,9 +668,11 @@ module.exports = {
   buildMyRosterEmbed,
   buildRegisterButton,
   buildRegisterModal,
+  buildStartRosterModal,
   buildRegistrationEmbed,
   buildRegistrationPanelEmbed,
   buildRosterActionRow,
+  buildRosterExportRow,
   buildRosterComponentsV2,
   buildRosterEmbed,
   buildRosterListComponentsV2,
