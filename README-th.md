@@ -33,7 +33,7 @@
 
 - `DISCORD_TOKEN`: Bot token
 - `DISCORD_CLIENT_ID`: Discord application client ID
-- `DISCORD_GUILD_ID`: Dev guild/server ID (เช่น ไอดีเซิร์ฟเวอร์ Ladpraobro)
+- `DISCORD_GUILD_ID`: Dev guild/server ID (ไอดีเซิร์ฟเวอร์)
 
 ### ระบบสร้างโรสเตอร์รายสัปดาห์
 
@@ -53,7 +53,10 @@
 - `WEAPON_OPTIONS_JSON`: (เลือกใส่ได้)
 - `TEAM_OPTIONS_JSON`: (เลือกใส่ได้)
 
-> **ตัวอย่าง:** > `PATH_OPTIONS_JSON=[{"label":"Tank","value":"Tank","description":"Frontline"}]` > `WEAPON_OPTIONS_JSON=[{"label":"Sword","value":"Sword","description":"Balanced melee"}]` > `TEAM_OPTIONS_JSON=[{"label":"Attack Team","value":"attack","description":"Offense"},{"label":"Defense Team","value":"defense","description":"Defense"}]`
+> **ตัวอย่าง:**
+> `PATH_OPTIONS_JSON=[{"label":"Tank","value":"Tank","description":"Frontline"}]`
+> `WEAPON_OPTIONS_JSON=[{"label":"Sword","value":"Sword","description":"Balanced melee"}]`
+> `TEAM_OPTIONS_JSON=[{"label":"Attack Team","value":"attack","description":"Offense"},{"label":"Defense Team","value":"defense","description":"Defense"}]`
 
 ## วิธีใช้งาน
 

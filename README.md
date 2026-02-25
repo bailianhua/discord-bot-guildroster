@@ -33,7 +33,7 @@ This bot manages guild member profiles and event rosters in Discord, with manual
 
 - `DISCORD_TOKEN`: Bot token
 - `DISCORD_CLIENT_ID`: Discord application client ID
-- `DISCORD_GUILD_ID`: Dev guild/server ID (e.g., Ladpraobro Server ID)
+- `DISCORD_GUILD_ID`: Dev guild/server ID
 
 ### Weekly Scheduler
 
@@ -53,7 +53,10 @@ This bot manages guild member profiles and event rosters in Discord, with manual
 - `WEAPON_OPTIONS_JSON`: (optional)
 - `TEAM_OPTIONS_JSON`: (optional)
 
-> **Example:** > `PATH_OPTIONS_JSON=[{"label":"Tank","value":"Tank","description":"Frontline"}]` > `WEAPON_OPTIONS_JSON=[{"label":"Sword","value":"Sword","description":"Balanced melee"}]` > `TEAM_OPTIONS_JSON=[{"label":"Attack Team","value":"attack","description":"Offense"},{"label":"Defense Team","value":"defense","description":"Defense"}]`
+> **Example:**
+> `PATH_OPTIONS_JSON=[{"label":"Tank","value":"Tank","description":"Frontline"}]`
+> `WEAPON_OPTIONS_JSON=[{"label":"Sword","value":"Sword","description":"Balanced melee"}]`
+> `TEAM_OPTIONS_JSON=[{"label":"Attack Team","value":"attack","description":"Offense"},{"label":"Defense Team","value":"defense","description":"Defense"}]`
 
 ## How To Use
 
