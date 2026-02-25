@@ -1,177 +1,102 @@
 # Guild Roster Discord Bot
 
-English + ไทย documentation
+[อ่านภาษาไทย (Read in Thai)](README-th.md)
 
-## Overview | ภาพรวม
+## Overview
 
-**EN:** This bot manages guild member profiles and event rosters in Discord, with manual and automatic weekly roster creation.
+This bot manages guild member profiles and event rosters in Discord, with manual and automatic weekly roster creation.
 
-**TH:** บอทนี้ช่วยจัดการโปรไฟล์สมาชิกกิลด์และโรสเตอร์กิจกรรมใน Discord รองรับทั้งการสร้างเองและการสร้างอัตโนมัติรายสัปดาห์
+## Main Features
 
-## Main Features | ความสามารถหลัก
+- **Profile registration**: `IGN`, `Path`, `Weapon`
+- **Roster management**: join, leave, set-team, show, announce, delete
+- **Export roster**: Excel-compatible `.csv` download button
+- **Menu system**: `/menu` for a private menu, `/pinmenu` for a public menu message
+- **Weekly automation**: Auto-post Saturday and Sunday event rosters every Tuesday, and auto-clean old weekly rosters
+- **Manual weekly controls**: `/triggerweeklybatch` to run the Tuesday batch now, `/clearoldroster` to clear all auto-weekly rosters in the target channel
 
-- **Profile registration** (`IGN`, `Path`, `Weapon`)
-- **Roster management** (join/leave/set-team/show/announce/delete)
-- **Export roster** (Excel-compatible `.csv` download button)
-- **Menu system**
-  - `/menu` = private menu (only command runner sees it)
-  - `/pinmenu` = public menu message in channel
-- **Weekly automation**
-  - Auto-post both Saturday + Sunday event rosters every Tuesday at configured time
-  - Auto-clean old weekly auto rosters
-- **Manual weekly controls**
-  - `/triggerweeklybatch` = run Tuesday batch now
-  - `/clearoldroster` = clear all auto-weekly rosters in target channel (including current week)
-
-## Requirements | ข้อกำหนด
+## Requirements
 
 - Node.js `18.17+`
 - Discord application + bot token
 
-## Quick Start | เริ่มใช้งานเร็ว
+## Quick Start
 
-1. Install dependencies
+1. Install dependencies using `npm install`
+2. Create environment file using `cp .env.example .env`
+3. Fill required env values in `.env` (`DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `DISCORD_GUILD_ID`)
+4. Run bot using `npm start` (Slash commands are deployed automatically on startup)
 
-```bash
-npm install
-```
+## Environment Variables
 
-2. Create environment file
-
-```bash
-cp .env.example .env
-```
-
-3. Fill required env values in `.env`
-
-- `DISCORD_TOKEN`
-- `DISCORD_CLIENT_ID`
-- `DISCORD_GUILD_ID` (optional, recommended for development)
-
-4. Run bot
-
-```bash
-npm start
-```
-
-On startup, slash commands are deployed automatically.
-
-## Environment Variables | ตัวแปรแวดล้อม
-
-### Core | หลัก
+### Core
 
 - `DISCORD_TOKEN`: Bot token
 - `DISCORD_CLIENT_ID`: Discord application client ID
-- `DISCORD_GUILD_ID`: Dev guild/server ID (optional)
+- `DISCORD_GUILD_ID`: Dev guild/server ID (e.g., Ladpraobro Server ID)
 
-### Weekly Scheduler | ระบบสร้างโรสเตอร์รายสัปดาห์
+### Weekly Scheduler
 
-- `AUTO_ROSTER_ENABLED` (optional, default: `true`)
-- `AUTO_ROSTER_CHANNEL_ID` (required for auto mode)
-- `AUTO_ROSTER_GUILD_ID` (optional, fallback: `DISCORD_GUILD_ID`)
-- `AUTO_ROSTER_TIMEZONE` (optional, default: `Asia/Bangkok`)
-- `AUTO_ROSTER_HOUR` (optional, default: `19`)
-- `AUTO_ROSTER_MINUTE` (optional, default: `30`)
-- `AUTO_ROSTER_SAT_TITLE` (optional)
-- `AUTO_ROSTER_SUN_TITLE` (optional)
-- `AUTO_ROSTER_FORCE_EVENT` (optional test override: `sat` or `sun`)
+- `AUTO_ROSTER_ENABLED`: (optional, default: `true`)
+- `AUTO_ROSTER_CHANNEL_ID`: (required for auto mode)
+- `AUTO_ROSTER_GUILD_ID`: (optional, fallback: `DISCORD_GUILD_ID`)
+- `AUTO_ROSTER_TIMEZONE`: (optional, default: `Asia/Bangkok`)
+- `AUTO_ROSTER_HOUR`: (optional, default: `19`)
+- `AUTO_ROSTER_MINUTE`: (optional, default: `30`)
+- `AUTO_ROSTER_SAT_TITLE`: (optional)
+- `AUTO_ROSTER_SUN_TITLE`: (optional)
+- `AUTO_ROSTER_FORCE_EVENT`: (optional test override: `sat` or `sun`)
 
-### Select Options Override | ปรับตัวเลือกในฟอร์ม
+### Select Options Override
 
-- `PATH_OPTIONS_JSON` (optional)
-- `WEAPON_OPTIONS_JSON` (optional)
-- `TEAM_OPTIONS_JSON` (optional)
+- `PATH_OPTIONS_JSON`: (optional)
+- `WEAPON_OPTIONS_JSON`: (optional)
+- `TEAM_OPTIONS_JSON`: (optional)
 
-Example:
+> **Example:** > `PATH_OPTIONS_JSON=[{"label":"Tank","value":"Tank","description":"Frontline"}]` > `WEAPON_OPTIONS_JSON=[{"label":"Sword","value":"Sword","description":"Balanced melee"}]` > `TEAM_OPTIONS_JSON=[{"label":"Attack Team","value":"attack","description":"Offense"},{"label":"Defense Team","value":"defense","description":"Defense"}]`
 
-```env
-PATH_OPTIONS_JSON=[{"label":"Tank","value":"Tank","description":"Frontline"}]
-WEAPON_OPTIONS_JSON=[{"label":"Sword","value":"Sword","description":"Balanced melee"}]
-TEAM_OPTIONS_JSON=[{"label":"Attack Team","value":"attack","description":"Offense"},{"label":"Defense Team","value":"defense","description":"Defense"}]
-```
+## How To Use
 
-## How To Use | วิธีใช้งาน
+- **Member flow**: Run `/register` to fill profile, click buttons on the roster message to join/leave, and use `/myroster` to see your joined events.
+- **Admin manual roster flow**: Run `/startroster`, use `/setteam` or buttons to assign teams, export to Excel, and `/announceroster` to post publicly.
+- **Admin menu flow**: Use `/menu` for private quick actions or `/pinmenu` to post it publicly.
+- **Weekly automation flow**: Set `AUTO_ROSTER_CHANNEL_ID` and keep `AUTO_ROSTER_ENABLED=true`. The bot handles Tuesday creation and old roster cleanup automatically.
 
-### 1) Member flow | ฝั่งสมาชิก
+## Command Reference
 
-1. Run `/register` and fill profile.
-2. Open roster message and click `เข้าร่วมกิจกรรม`.
-3. If needed, click `ยกเลิกลงชื่อ`.
-4. Use `/myroster` to see your profile + joined events.
+- `/register` - Open registration modal
+- `/registerpanel` - (Admin) Post registration panel
+- `/menu` - Private action menu
+- `/pinmenu` - (Admin) Post public menu
+- `/triggerweeklybatch` - (Admin) Manually trigger Tuesday batch now
+- `/clearoldroster` - (Admin) Clear all auto-weekly rosters in target channel
+- `/startroster` - (Admin) Create roster post
+- `/roster` - Show roster list
+- `/showroster` - Pick and show roster details
+- `/announceroster` - (Admin) Publicly announce roster
+- `/myroster` - Show your profile + rosters
+- `/setteam` - (Admin) Assign team by picker
+- `/deleteroster` - (Admin) Delete selected roster
 
-### 2) Admin manual roster flow | ฝั่งแอดมินแบบสร้างเอง
+## Testing Weekly Features
 
-1. Run `/startroster` (optional title).
-2. Members join from buttons.
-3. Use `ตั้งทีม (แอดมิน)` button or `/setteam` to assign teams.
-4. Use `ดาวน์โหลด Excel` button to get roster file.
-5. Use `/announceroster` to post roster publicly.
+1. Set `AUTO_ROSTER_ENABLED=true`, `AUTO_ROSTER_CHANNEL_ID=<test_channel_id>`, `AUTO_ROSTER_FORCE_EVENT=sat`, and set the time 1-2 minutes ahead.
+2. Restart bot and verify one roster is created at the scheduled minute without duplicates.
+3. Remove `AUTO_ROSTER_FORCE_EVENT` after testing.
+4. For a fast test, run `/triggerweeklybatch` and then `/clearoldroster`.
 
-### 3) Admin menu flow | เมนูแอดมิน
+## How to get Channel ID
 
-1. `/menu` for private quick actions.
-2. `/pinmenu` to post menu publicly in channel.
-
-### 4) Weekly automation flow | งานอัตโนมัติรายสัปดาห์
-
-1. Set `AUTO_ROSTER_CHANNEL_ID`.
-2. Keep `AUTO_ROSTER_ENABLED=true`.
-3. Every Tuesday at configured time, bot creates both Saturday + Sunday rosters.
-4. Bot removes old auto-weekly rosters from previous weeks during scheduled/trigger runs.
-
-## Command Reference | รายการคำสั่ง
-
-- `/register` - Open registration modal | เปิดฟอร์มลงทะเบียน
-- `/registerpanel` (admin) - Post registration panel | โพสต์แผงลงทะเบียน
-- `/menu` - Private action menu | เมนูส่วนตัว
-- `/pinmenu` (admin) - Post public menu | โพสต์เมนูสาธารณะ
-- `/triggerweeklybatch` (admin) - Manually trigger Tuesday batch now | สั่งสร้างโรสเตอร์รายสัปดาห์ทันที
-- `/clearoldroster` (admin) - Clear all auto-weekly rosters in target channel | ลบโรสเตอร์อัตโนมัติทั้งหมดในช่องเป้าหมาย
-- `/startroster` (admin) - Create roster post | เริ่มโรสเตอร์กิจกรรม
-- `/roster` - Show roster list | แสดงรายการโรสเตอร์
-- `/showroster` - Pick and show roster details | เลือกดูรายละเอียดโรสเตอร์
-- `/announceroster` (admin) - Publicly announce roster | ประกาศโรสเตอร์สาธารณะ
-- `/myroster` - Show your profile + rosters | แสดงโปรไฟล์และโรสเตอร์ของฉัน
-- `/setteam` (admin) - Assign team by picker | กำหนดทีมให้สมาชิก
-- `/deleteroster` (admin) - Delete selected roster | ลบโรสเตอร์ที่เลือก
-
-## Testing Weekly Features | การทดสอบระบบรายสัปดาห์
-
-1. Set:
-   - `AUTO_ROSTER_ENABLED=true`
-   - `AUTO_ROSTER_CHANNEL_ID=<test_channel_id>`
-   - `AUTO_ROSTER_FORCE_EVENT=sat` (or `sun`)
-   - `AUTO_ROSTER_HOUR` / `AUTO_ROSTER_MINUTE` to 1-2 minutes ahead
-2. Restart bot.
-3. Verify one roster is created at scheduled minute.
-4. Ensure no duplicate is created in same day.
-5. Remove `AUTO_ROSTER_FORCE_EVENT` after test.
-
-Alternative fast test:
-
-- Run `/triggerweeklybatch` to create both events immediately.
-- Run `/clearoldroster` to clear all auto-weekly rosters in target channel.
-
-## How to get Channel ID | วิธีหา Channel ID
-
-1. Discord -> `User Settings` -> `Advanced` -> enable `Developer Mode`.
+1. In Discord, go to `User Settings` -> `Advanced` -> enable `Developer Mode`.
 2. Right-click target channel -> `Copy Channel ID`.
-3. Put it in `.env`:
+3. Put it in `.env` (e.g., `AUTO_ROSTER_CHANNEL_ID=123456789012345678`).
 
-```env
-AUTO_ROSTER_CHANNEL_ID=123456789012345678
-```
+## Data Storage & Project Structure
 
-## Data Storage | การจัดเก็บข้อมูล
-
-- Data file: `data/store.json`
-- Member profiles are scoped by guild.
-
-## Project Structure | โครงสร้างโปรเจกต์
-
-- `src/index.js` - bootstrap + login + scheduler start
-- `src/commands.js` - slash command definitions
-- `src/interactions/` - command/button/modal/select handlers
-- `src/services/` - command deploy, permissions, message sync, weekly scheduler, export
-- `src/ui/builders.js` - embeds/modals/components builders
-- `src/store.js` - JSON storage layer
+- **Data file**: `data/store.json` (Member profiles are scoped by guild)
+- **src/index.js**: Bootstrap, login, and scheduler start
+- **src/commands.js**: Slash command definitions
+- **src/interactions/**: Command, button, modal, and select handlers
+- **src/services/**: Command deploy, permissions, message sync, weekly scheduler, export
+- **src/ui/builders.js**: Embeds, modals, and components builders
+- **src/store.js**: JSON storage layer
