@@ -1,8 +1,8 @@
-const { MessageFlags } = require("discord.js");
 const { handleButton } = require("./button");
 const { handleChatInput } = require("./chat-input");
 const { handleModalSubmit } = require("./modal-submit");
 const { handleSelectMenu } = require("./select-menu");
+const { replyEphemeral } = require("../utils/interaction-response");
 
 async function handleInteractionCreate(interaction, context) {
   try {
@@ -27,10 +27,7 @@ async function handleInteractionCreate(interaction, context) {
   } catch (error) {
     console.error(error);
     if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
-      await interaction.reply({
-        content: "เกิดข้อผิดพลาดในการประมวลผลคำสั่งนี้",
-        flags: MessageFlags.Ephemeral
-      });
+      await replyEphemeral(interaction, "เกิดข้อผิดพลาดในการประมวลผลคำสั่งนี้");
     }
   }
 }

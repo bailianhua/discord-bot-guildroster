@@ -1,4 +1,5 @@
-const { PATH_OPTIONS, WEAPON_OPTIONS } = require("../config/select-options");
+const { PATH_OPTIONS } = require("../config/select-options");
+const { dayChoiceLabel } = require("../utils/day-choice");
 
 function csvEscape(value) {
   const raw = String(value ?? "");
@@ -9,51 +10,40 @@ function csvEscape(value) {
 }
 
 function slugifyFilename(text) {
-  const normalized = String(text || "roster")
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "");
-  const safe = normalized
-    .replace(/[^a-zA-Z0-9_-]+/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "");
+  const raw = String(text || "roster").trim();
+  const safe = raw
+    // Remove characters that are invalid in common filesystems.
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/\.+$/g, "")
+    .trim();
   return safe || "roster";
 }
 
-function teamLabel(team) {
-  if (team === "attack") return "Attack";
-  if (team === "defense") return "Defense";
-  return "Unassigned";
-}
-
-function buildRosterCsvBuffer(rosterTitle, entries) {
+function buildRosterCsvBuffer(rosterTitle, entries, options = {}) {
   const pathLabelByValue = Object.fromEntries(
     PATH_OPTIONS.map((option) => [option.value, option.label])
   );
-  const weaponLabelByValue = Object.fromEntries(
-    WEAPON_OPTIONS.map((option) => [option.value, option.label])
-  );
+  const displayNameByUserId = options.displayNameByUserId || {};
 
   const header = [
-    "No",
-    "User ID",
-    "Mention",
+    "Discord name",
     "IGN",
-    "Path",
-    "Weapon",
-    "Team"
+    "Path/class",
+    "วันที่เข้าร่วม"
   ];
 
-  const rows = entries.map((entry, idx) => {
+  const rows = entries.map((entry) => {
     const profilePath = entry.profile?.path || entry.profile?.class || "-";
-    const profileWeapon = entry.profile?.weapon || "-";
+    const discordName =
+      displayNameByUserId[entry.userId] ||
+      entry.profile?.ign ||
+      entry.userId;
     return [
-      idx + 1,
-      entry.userId,
-      `<@${entry.userId}>`,
+      discordName,
       entry.profile?.ign || "-",
       pathLabelByValue[profilePath] || profilePath,
-      weaponLabelByValue[profileWeapon] || profileWeapon,
-      teamLabel(entry.team)
+      dayChoiceLabel(entry.dayChoice)
     ];
   });
 
@@ -65,6 +55,7 @@ function buildRosterCsvBuffer(rosterTitle, entries) {
   // UTF-8 BOM helps Excel render Thai text correctly.
   const csvWithBom = `\uFEFF${csvBody}`;
   const fileBase = slugifyFilename(rosterTitle);
+
   return {
     buffer: Buffer.from(csvWithBom, "utf8"),
     fileName: `${fileBase}.csv`

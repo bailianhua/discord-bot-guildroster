@@ -1,5 +1,84 @@
-const { deleteRoster, getRosterEntries } = require("../store");
-const { buildRosterEmbed } = require("../ui/builders");
+const {
+  clearRosterListViewMessage,
+  deleteRoster,
+  getRecentRostersInGuild,
+  getRosterEntries,
+  getRosterListViewMessage,
+  getRosterMirrorMessages,
+  removeRosterMirrorMessage
+} = require("../store");
+const {
+  buildRosterComponentsV2,
+  buildRosterEmbed,
+  buildRosterListComponentsV2
+} = require("../ui/builders");
+
+async function fetchTextMessage(guild, channelId, messageId) {
+  const channel = await guild.channels.fetch(channelId).catch(() => null);
+  if (!channel || !channel.isTextBased()) return null;
+  const message = await channel.messages.fetch(messageId).catch(() => null);
+  return message || null;
+}
+
+async function syncRosterMirrorMessages(guild, roster, title, entries) {
+  const mirrors = getRosterMirrorMessages(roster.messageId);
+  if (!Array.isArray(mirrors) || mirrors.length === 0) return;
+
+  const components = buildRosterComponentsV2(
+    title || roster.title,
+    entries,
+    roster.messageId
+  );
+
+  for (const ref of mirrors) {
+    if (!ref?.messageId || ref.messageId === roster.messageId) continue;
+
+    const message = await fetchTextMessage(guild, ref.channelId, ref.messageId);
+    if (!message) {
+      removeRosterMirrorMessage(roster.messageId, ref.messageId);
+      continue;
+    }
+
+    await message
+      .edit({
+        content: null,
+        embeds: [],
+        components
+      })
+      .catch(() => null);
+  }
+}
+
+async function syncRosterListViewMessage(guild) {
+  const listView = getRosterListViewMessage(guild.id);
+  if (!listView?.channelId || !listView?.messageId) return;
+
+  const message = await fetchTextMessage(guild, listView.channelId, listView.messageId);
+  if (!message) {
+    clearRosterListViewMessage(guild.id);
+    return;
+  }
+
+  const rosters = getRecentRostersInGuild(guild.id, 25);
+  if (rosters.length === 0) {
+    await message
+      .edit({
+        content: "ยังไม่มีกิจกรรมที่ถูกสร้างในเซิร์ฟเวอร์นี้",
+        embeds: [],
+        components: []
+      })
+      .catch(() => null);
+    return;
+  }
+
+  await message
+    .edit({
+      content: null,
+      embeds: [],
+      components: buildRosterListComponentsV2(rosters)
+    })
+    .catch(() => null);
+}
 
 async function syncRosterMessage(guild, rosterMessageId, title) {
   if (!guild?.channels) return;
@@ -7,14 +86,14 @@ async function syncRosterMessage(guild, rosterMessageId, title) {
   const data = getRosterEntries(rosterMessageId);
   if (!data) return;
 
-  const channel = await guild.channels.fetch(data.roster.channelId).catch(() => null);
-  if (!channel || !channel.isTextBased()) return;
+  const message = await fetchTextMessage(guild, data.roster.channelId, rosterMessageId);
+  if (message) {
+    const embed = buildRosterEmbed(title || data.roster.title, data.entries);
+    await message.edit({ embeds: [embed] }).catch(() => null);
+  }
 
-  const message = await channel.messages.fetch(rosterMessageId).catch(() => null);
-  if (!message) return;
-
-  const embed = buildRosterEmbed(title || data.roster.title, data.entries);
-  await message.edit({ embeds: [embed] }).catch(() => null);
+  await syncRosterMirrorMessages(guild, data.roster, title, data.entries);
+  await syncRosterListViewMessage(guild);
 }
 
 async function deleteRosterWithMessage(guild, targetRoster) {
@@ -34,6 +113,7 @@ async function deleteRosterWithMessage(guild, targetRoster) {
   }
 
   deleteRoster(targetRoster.messageId);
+  await syncRosterListViewMessage(guild);
 
   if (deletedMessage) {
     return "\nลบโพสต์กิจกรรมในแชนแนลแล้ว";

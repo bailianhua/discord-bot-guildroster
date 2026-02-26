@@ -16,18 +16,23 @@ const {
 const { MENU_BUTTONS, REGISTER_BUTTON_ID } = require("../constants");
 const {
   PATH_OPTIONS,
-  TEAM_OPTIONS,
-  WEAPON_OPTIONS
+  TEAM_OPTIONS
 } = require("../config/select-options");
+const {
+  countMemberDayChoices,
+  createDayChoiceBuckets,
+  dayChoiceKey,
+  dayChoiceLabel
+} = require("../utils/day-choice");
+const { formatThaiDateTime } = require("../utils/date-time");
 
-function buildRegistrationEmbed({ ign = "-", playerPath = "-", weapon = "-" }) {
+function buildRegistrationEmbed({ ign = "-", playerPath = "-" }) {
   return new EmbedBuilder()
     .setTitle("การ์ดลงทะเบียนกิลด์")
     .setDescription("ลงทะเบียนเสร็จสมบูรณ์")
     .addFields(
       { name: "ชื่อในเกม (IGN)", value: ign, inline: true },
-      { name: "สายอาชีพ (Path)", value: playerPath, inline: true },
-      { name: "อาวุธ (Weapon)", value: weapon, inline: true }
+      { name: "สายอาชีพ (Path)", value: playerPath, inline: true }
     )
     .setColor(0x3498db)
     .setTimestamp();
@@ -36,20 +41,20 @@ function buildRegistrationEmbed({ ign = "-", playerPath = "-", weapon = "-" }) {
 function buildRegistrationPanelEmbed() {
   return new EmbedBuilder()
     .setTitle("ลงทะเบียนสมาชิกกิลด์")
-    .setDescription("คลิกที่ปุ่ม **ลงทะเบียนโปรไฟล์** เพื่อระบุชื่อ, สายอาชีพ และอาวุธของคุณ")
+    .setDescription("คลิกที่ปุ่ม **ลงทะเบียนโปรไฟล์** เพื่อระบุชื่อและสายอาชีพของคุณ")
     .setColor(0x5865f2)
     .setTimestamp();
 }
 
-function buildMenuComponentsV2() {
+function buildUserMenuComponentsV2() {
   const container = new ContainerBuilder()
     .setAccentColor(0xf1c40f)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
         [
           "## Guild Menu",
-          "กดปุ่มด้านขวาของแต่ละรายการเพื่อใช้งานทันที",
-          "ปุ่มเริ่ม/ประกาศ/ลบกิจกรรมใช้ได้เฉพาะแอดมิน"
+          "เมนูสำหรับสมาชิกทั่วไป",
+          "กดปุ่มด้านขวาของแต่ละรายการเพื่อใช้งานทันที"
         ].join("\n")
       )
     )
@@ -86,16 +91,6 @@ function buildMenuComponentsV2() {
         ),
       new SectionBuilder()
         .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent("**เริ่มกิจกรรม**\nสร้างโพสต์ลงชื่อกิจกรรมใหม่")
-        )
-        .setButtonAccessory(
-          new ButtonBuilder()
-            .setCustomId(MENU_BUTTONS.startRoster)
-            .setLabel("เริ่ม")
-            .setStyle(ButtonStyle.Primary)
-        ),
-      new SectionBuilder()
-        .addTextDisplayComponents(
           new TextDisplayBuilder().setContent("**เลือกดูกิจกรรม**\nเลือกกิจกรรมและดูรายละเอียด")
         )
         .setButtonAccessory(
@@ -103,6 +98,34 @@ function buildMenuComponentsV2() {
             .setCustomId(MENU_BUTTONS.showRoster)
             .setLabel("เลือก")
             .setStyle(ButtonStyle.Success)
+        )
+    );
+
+  return [container];
+}
+
+function buildAdminMenuComponentsV2() {
+  const container = new ContainerBuilder()
+    .setAccentColor(0xe67e22)
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        [
+          "## Admin Menu",
+          "เมนูสำหรับผู้ดูแลระบบ",
+          "ใช้สำหรับสร้าง/ประกาศ/ลบกิจกรรม"
+        ].join("\n")
+      )
+    )
+    .addSectionComponents(
+      new SectionBuilder()
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("**เริ่มกิจกรรม**\nสร้างโพสต์ลงชื่อกิจกรรมใหม่")
+        )
+        .setButtonAccessory(
+          new ButtonBuilder()
+            .setCustomId(MENU_BUTTONS.startRoster)
+            .setLabel("เริ่ม")
+            .setStyle(ButtonStyle.Primary)
         ),
       new SectionBuilder()
         .addTextDisplayComponents(
@@ -123,6 +146,26 @@ function buildMenuComponentsV2() {
             .setCustomId(MENU_BUTTONS.deleteRoster)
             .setLabel("ลบ")
             .setStyle(ButtonStyle.Danger)
+        ),
+      new SectionBuilder()
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("**รัน Weekly Batch**\nสร้าง Guild War และบันทึกช่องนี้เข้า scheduler")
+        )
+        .setButtonAccessory(
+          new ButtonBuilder()
+            .setCustomId(MENU_BUTTONS.triggerWeeklyBatch)
+            .setLabel("รันแบตช์")
+            .setStyle(ButtonStyle.Success)
+        ),
+      new SectionBuilder()
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("**ล้าง Auto Roster**\nลบโรสเตอร์อัตโนมัติในช่องปัจจุบัน")
+        )
+        .setButtonAccessory(
+          new ButtonBuilder()
+            .setCustomId(MENU_BUTTONS.clearOldRoster)
+            .setLabel("ล้างอัตโนมัติ")
+            .setStyle(ButtonStyle.Secondary)
         )
     );
 
@@ -140,16 +183,12 @@ function buildRosterActionRow(messageId) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`join_roster:${messageId}`)
-      .setLabel("เข้าร่วมกิจกรรม")
+      .setLabel("ลงทะเบียนกิจกรรม")
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId(`leave_roster:${messageId}`)
       .setLabel("ยกเลิกลงชื่อ")
       .setStyle(ButtonStyle.Danger),
-    new ButtonBuilder()
-      .setCustomId(`setteam_roster:${messageId}`)
-      .setLabel("ตั้งทีม (แอดมิน)")
-      .setStyle(ButtonStyle.Secondary),
     buildRegisterButton(ButtonStyle.Secondary)
   );
 }
@@ -161,6 +200,45 @@ function buildRosterExportRow(messageId) {
       .setLabel("ดาวน์โหลด Excel")
       .setStyle(ButtonStyle.Secondary)
   );
+}
+
+function buildRosterDayChoiceModal(roster) {
+  const modal = new ModalBuilder()
+    .setCustomId(`join_roster_modal:${roster.messageId}`)
+    .setTitle(`ลงทะเบียน: ${truncateLabel(roster.title || "Guild War", 30)}`);
+
+  const dayChoiceSelect = new StringSelectMenuBuilder()
+    .setCustomId("join_roster_day_choice")
+    .setPlaceholder("เลือกวันที่เข้าร่วม")
+    .setRequired(true)
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(
+      {
+        label: "วันเสาร์",
+        value: "saturday",
+        description: "เข้าร่วมเฉพาะวันเสาร์"
+      },
+      {
+        label: "วันอาทิตย์",
+        value: "sunday",
+        description: "เข้าร่วมเฉพาะวันอาทิตย์"
+      },
+      {
+        label: "ทั้งเสาร์และอาทิตย์",
+        value: "both",
+        description: "เข้าร่วมทั้งวันเสาร์และอาทิตย์"
+      }
+    );
+
+  modal.addLabelComponents(
+    new LabelBuilder()
+      .setLabel("วันที่ต้องการเข้าร่วม")
+      .setDescription("เลือกได้ 1 ตัวเลือก")
+      .setStringSelectMenuComponent(dayChoiceSelect)
+  );
+
+  return modal;
 }
 
 function buildRegisterModal() {
@@ -185,14 +263,6 @@ function buildRegisterModal() {
     .setMaxValues(1)
     .addOptions(PATH_OPTIONS);
 
-  const weaponSelect = new StringSelectMenuBuilder()
-    .setCustomId("register_weapon_value")
-    .setPlaceholder("เลือกอาวุธของคุณ")
-    .setRequired(true)
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(WEAPON_OPTIONS);
-
   modal.addLabelComponents(
     new LabelBuilder()
       .setLabel("ชื่อในเกม (IGN)")
@@ -202,10 +272,6 @@ function buildRegisterModal() {
       .setLabel("สายอาชีพ (Path)")
       .setDescription("เลือกมา 1 สายอาชีพ")
       .setStringSelectMenuComponent(pathSelect),
-    new LabelBuilder()
-      .setLabel("อาวุธ (Weapon)")
-      .setDescription("เลือกอาวุธที่ใช้")
-      .setStringSelectMenuComponent(weaponSelect)
   );
 
   return modal;
@@ -333,23 +399,11 @@ function buildRosterEmbed(title, entries) {
   const pathLabelByValue = Object.fromEntries(
     PATH_OPTIONS.map((option) => [option.value, option.label])
   );
-  const weaponLabelByValue = Object.fromEntries(
-    WEAPON_OPTIONS.map((option) => [option.value, option.label])
-  );
 
-  const getTeamBucket = (team) => {
-    if (team === "attack") return "attack";
-    if (team === "defense") return "defense";
-    return "unassigned";
-  };
-  const buckets = {
-    attack: [],
-    defense: [],
-    unassigned: []
-  };
+  const buckets = createDayChoiceBuckets();
 
   entries.forEach((entry) => {
-    buckets[getTeamBucket(entry.team)].push(entry);
+    buckets[dayChoiceKey(entry.dayChoice)].push(entry);
   });
 
   const formatMemberLine = (entry, idx) => {
@@ -358,8 +412,7 @@ function buildRosterEmbed(title, entries) {
 
     const profilePath = p.path || p.class || "-";
     const pathLabel = pathLabelByValue[profilePath] || profilePath;
-    const weaponLabel = weaponLabelByValue[p.weapon] || p.weapon || "-";
-    return `${idx + 1}. <@${entry.userId}> | ${p.ign} | ${pathLabel} | ${weaponLabel}`;
+    return `${idx + 1}. <@${entry.userId}> | ${p.ign} | ${pathLabel}`;
   };
 
   const buildBucketFields = (bucketLabel, list) => {
@@ -379,20 +432,22 @@ function buildRosterEmbed(title, entries) {
   };
 
   const total = entries.length;
-  const attackCount = buckets.attack.length;
-  const defenseCount = buckets.defense.length;
-  const unassignedCount = buckets.unassigned.length;
+  const saturdayCount = buckets.saturday.length;
+  const sundayCount = buckets.sunday.length;
+  const bothCount = buckets.both.length;
+  const unspecifiedCount = buckets.unspecified.length;
 
   const fields = [
-    ...buildBucketFields("Attack Team", buckets.attack),
-    ...buildBucketFields("Defense Team", buckets.defense),
-    ...buildBucketFields("Unassigned", buckets.unassigned)
+    ...buildBucketFields("วันเสาร์", buckets.saturday),
+    ...buildBucketFields("วันอาทิตย์", buckets.sunday),
+    ...buildBucketFields("ทั้งเสาร์และอาทิตย์", buckets.both),
+    ...buildBucketFields("ไม่ระบุ", buckets.unspecified)
   ];
 
   return new EmbedBuilder()
     .setTitle(title)
     .setDescription(
-      `สมาชิกทั้งหมด ${total} คน | Attack ${attackCount} | Defense ${defenseCount} | Unassigned ${unassignedCount}`
+      `สมาชิกทั้งหมด ${total} คน | วันเสาร์ ${saturdayCount} | วันอาทิตย์ ${sundayCount} | ทั้งสองวัน ${bothCount} | ไม่ระบุ ${unspecifiedCount}`
     )
     .addFields(fields)
     .setColor(0x00b894)
@@ -403,23 +458,11 @@ function buildRosterComponentsV2(title, entries, rosterMessageId) {
   const pathLabelByValue = Object.fromEntries(
     PATH_OPTIONS.map((option) => [option.value, option.label])
   );
-  const weaponLabelByValue = Object.fromEntries(
-    WEAPON_OPTIONS.map((option) => [option.value, option.label])
-  );
 
-  const getTeamBucket = (team) => {
-    if (team === "attack") return "attack";
-    if (team === "defense") return "defense";
-    return "unassigned";
-  };
-  const buckets = {
-    attack: [],
-    defense: [],
-    unassigned: []
-  };
+  const buckets = createDayChoiceBuckets();
 
   entries.forEach((entry) => {
-    buckets[getTeamBucket(entry.team)].push(entry);
+    buckets[dayChoiceKey(entry.dayChoice)].push(entry);
   });
 
   const formatMemberLine = (entry, idx) => {
@@ -428,8 +471,7 @@ function buildRosterComponentsV2(title, entries, rosterMessageId) {
 
     const profilePath = p.path || p.class || "-";
     const pathLabel = pathLabelByValue[profilePath] || profilePath;
-    const weaponLabel = weaponLabelByValue[p.weapon] || p.weapon || "-";
-    return `${idx + 1}. <@${entry.userId}> | ${p.ign} | ${pathLabel} | ${weaponLabel}`;
+    return `${idx + 1}. <@${entry.userId}> | ${p.ign} | ${pathLabel}`;
   };
 
   const splitBucketChunks = (list, maxChars = 3400) => {
@@ -439,16 +481,17 @@ function buildRosterComponentsV2(title, entries, rosterMessageId) {
   };
 
   const total = entries.length;
-  const attackCount = buckets.attack.length;
-  const defenseCount = buckets.defense.length;
-  const unassignedCount = buckets.unassigned.length;
+  const saturdayCount = buckets.saturday.length;
+  const sundayCount = buckets.sunday.length;
+  const bothCount = buckets.both.length;
+  const unspecifiedCount = buckets.unspecified.length;
 
   const container = new ContainerBuilder()
     .setAccentColor(0x00b894)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`## ${title || "รายละเอียดกิจกรรม"}`),
       new TextDisplayBuilder().setContent(
-        `สมาชิกทั้งหมด ${total} คน | Attack ${attackCount} | Defense ${defenseCount} | Unassigned ${unassignedCount}`
+        `สมาชิกทั้งหมด ${total} คน | วันเสาร์ ${saturdayCount} | วันอาทิตย์ ${sundayCount} | ทั้งสองวัน ${bothCount} | ไม่ระบุ ${unspecifiedCount}`
       )
     );
 
@@ -471,9 +514,10 @@ function buildRosterComponentsV2(title, entries, rosterMessageId) {
     }
   };
 
-  addBucketSection("Attack Team", buckets.attack);
-  addBucketSection("Defense Team", buckets.defense);
-  addBucketSection("Unassigned", buckets.unassigned);
+  addBucketSection("วันเสาร์", buckets.saturday);
+  addBucketSection("วันอาทิตย์", buckets.sunday);
+  addBucketSection("ทั้งเสาร์และอาทิตย์", buckets.both);
+  addBucketSection("ไม่ระบุ", buckets.unspecified);
 
   if (rosterMessageId) {
     container.addSeparatorComponents(new SeparatorBuilder()).addActionRowComponents(
@@ -486,23 +530,17 @@ function buildRosterComponentsV2(title, entries, rosterMessageId) {
 }
 
 function buildMyRosterEmbed(user, profile, rosters) {
-  const teamLabel = (team) => {
-    if (team === "attack") return "Attack";
-    if (team === "defense") return "Defense";
-    return "Unassigned";
-  };
-
   const profilePath = profile?.path || profile?.class || "-";
   const profileText = profile
-    ? `${profile.ign} | ${profilePath} | ${profile.weapon}`
+    ? `${profile.ign} | ${profilePath}`
     : "ยังไม่ได้ลงทะเบียนโปรไฟล์";
 
   const rosterLines = rosters.length
     ? rosters.map((roster, idx) => {
-      const createdAt = new Date(roster.createdAt).toLocaleString("th-TH");
-      const team = roster.memberTeams?.[user.id] || null;
-      return `${idx + 1}. **${roster.title || `Roster ${roster.messageId}`}** | ทีม: ${teamLabel(
-        team
+      const createdAt = formatThaiDateTime(roster.createdAt);
+      const dayChoice = roster.memberDays?.[user.id] || null;
+      return `${idx + 1}. **${roster.title || `Roster ${roster.messageId}`}** | วัน: ${dayChoiceLabel(
+        dayChoice
       )} | <#${roster.channelId}> | ${createdAt}`;
     })
     : ["ยังไม่พบกิจกรรมที่คุณเข้าร่วมหรือถูกกำหนดทีม"];
@@ -527,23 +565,17 @@ function buildMyRosterEmbed(user, profile, rosters) {
 }
 
 function buildMyRosterComponentsV2(user, profile, rosters) {
-  const teamLabel = (team) => {
-    if (team === "attack") return "Attack";
-    if (team === "defense") return "Defense";
-    return "Unassigned";
-  };
-
   const profilePath = profile?.path || profile?.class || "-";
   const profileText = profile
-    ? `${profile.ign} | ${profilePath} | ${profile.weapon}`
+    ? `${profile.ign} | ${profilePath}`
     : "ยังไม่ได้ลงทะเบียนโปรไฟล์";
 
   const rosterLines = rosters.length
     ? rosters.map((roster, idx) => {
-      const createdAt = new Date(roster.createdAt).toLocaleString("th-TH");
-      const team = roster.memberTeams?.[user.id] || null;
-      return `${idx + 1}. **${roster.title || `Roster ${roster.messageId}`}** | ทีม: ${teamLabel(
-        team
+      const createdAt = formatThaiDateTime(roster.createdAt);
+      const dayChoice = roster.memberDays?.[user.id] || null;
+      return `${idx + 1}. **${roster.title || `Roster ${roster.messageId}`}** | วัน: ${dayChoiceLabel(
+        dayChoice
       )} | <#${roster.channelId}> | ${createdAt}`;
     })
     : ["ยังไม่พบกิจกรรมที่คุณเข้าร่วมหรือถูกกำหนดทีม"];
@@ -573,7 +605,7 @@ function buildMyRosterComponentsV2(user, profile, rosters) {
 
 function buildRosterPickerMenu(customId, placeholder, rosters) {
   const options = rosters.map((roster) => {
-    const when = new Date(roster.createdAt).toLocaleString("th-TH");
+    const when = formatThaiDateTime(roster.createdAt);
     return {
       label: truncateLabel(roster.title || `Roster ${roster.messageId}`, 100),
       description: truncateLabel(`สร้างเมื่อ ${when} | ห้อง ${roster.channelId}`, 100),
@@ -591,20 +623,13 @@ function buildRosterPickerMenu(customId, placeholder, rosters) {
 
 function buildRosterListEmbed(rosters) {
   const lines = rosters.map((roster, idx) => {
-    const createdAt = new Date(roster.createdAt).toLocaleString("th-TH");
-    const count = roster.memberIds?.length || 0;
-    const memberIds = roster.memberIds || [];
-    const attackCount = memberIds.filter(
-      (userId) => roster.memberTeams?.[userId] === "attack"
-    ).length;
-    const defenseCount = memberIds.filter(
-      (userId) => roster.memberTeams?.[userId] === "defense"
-    ).length;
-    const unassignedCount = count - attackCount - defenseCount;
+    const createdAt = formatThaiDateTime(roster.createdAt);
+    const { total, saturdayCount, sundayCount, bothCount, unspecifiedCount } =
+      countMemberDayChoices(roster.memberIds || [], roster.memberDays || {});
 
     return [
       `${idx + 1}) **${roster.title || `Roster ${roster.messageId}`}**`,
-      `สมาชิก ${count} | A ${attackCount} | D ${defenseCount} | U ${unassignedCount}`,
+      `สมาชิก ${total} | วันเสาร์ ${saturdayCount} | วันอาทิตย์ ${sundayCount} | ทั้งสองวัน ${bothCount} | ไม่ระบุ ${unspecifiedCount}`,
       `ห้อง <#${roster.channelId}> | ${createdAt}`
     ].join("\n");
   });
@@ -625,20 +650,13 @@ function buildRosterListEmbed(rosters) {
 
 function buildRosterListComponentsV2(rosters) {
   const lines = rosters.map((roster, idx) => {
-    const createdAt = new Date(roster.createdAt).toLocaleString("th-TH");
-    const count = roster.memberIds?.length || 0;
-    const memberIds = roster.memberIds || [];
-    const attackCount = memberIds.filter(
-      (userId) => roster.memberTeams?.[userId] === "attack"
-    ).length;
-    const defenseCount = memberIds.filter(
-      (userId) => roster.memberTeams?.[userId] === "defense"
-    ).length;
-    const unassignedCount = count - attackCount - defenseCount;
+    const createdAt = formatThaiDateTime(roster.createdAt);
+    const { total, saturdayCount, sundayCount, bothCount, unspecifiedCount } =
+      countMemberDayChoices(roster.memberIds || [], roster.memberDays || {});
 
     return [
       `### ${idx + 1}. ${roster.title || `Roster ${roster.messageId}`}`,
-      `**Total:** ${count} | **Attack:** ${attackCount} | **Defense:** ${defenseCount} | **Unassigned:** ${unassignedCount}`,
+      `**ทั้งหมด:** ${total} | **วันเสาร์:** ${saturdayCount} | **วันอาทิตย์:** ${sundayCount} | **ทั้งสองวัน:** ${bothCount} | **ไม่ระบุ:** ${unspecifiedCount}`,
       `ห้อง <#${roster.channelId}> | ${createdAt}`
     ].join("\n");
   });
@@ -663,11 +681,13 @@ function buildRosterListComponentsV2(rosters) {
 }
 
 module.exports = {
-  buildMenuComponentsV2,
+  buildAdminMenuComponentsV2,
   buildMyRosterComponentsV2,
   buildMyRosterEmbed,
+  buildUserMenuComponentsV2,
   buildRegisterButton,
   buildRegisterModal,
+  buildRosterDayChoiceModal,
   buildStartRosterModal,
   buildRegistrationEmbed,
   buildRegistrationPanelEmbed,

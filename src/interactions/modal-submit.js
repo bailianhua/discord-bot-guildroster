@@ -1,11 +1,10 @@
 const {
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle,
-  MessageFlags,
-  PermissionFlagsBits
+  ButtonStyle
 } = require("discord.js");
 const {
+  addMemberToRoster,
   createRoster,
   getMemberInfo,
   getRoster,
@@ -22,35 +21,32 @@ const {
 } = require("../ui/builders");
 const { getMissingPostPerms } = require("../services/permissions");
 const { syncRosterMessage } = require("../services/roster-messages");
+const { hasManageGuildAccess } = require("../utils/access");
+const { dayChoiceLabel } = require("../utils/day-choice");
+const { replyEphemeral } = require("../utils/interaction-response");
 
 async function handleModalSubmit(interaction) {
   if (!interaction.guildId) {
-    await interaction.reply({
+    await replyEphemeral(interaction, {
       content: "กรุณาใช้ระบบนี้ในเซิร์ฟเวอร์",
-      flags: MessageFlags.Ephemeral
     });
     return;
   }
 
   if (interaction.customId === "start_roster_modal") {
-    if (
-      !interaction.memberPermissions ||
-      !interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild)
-    ) {
-      await interaction.reply({
+    if (!hasManageGuildAccess(interaction)) {
+      await replyEphemeral(interaction, {
         content: "เฉพาะผู้ดูแลระบบเท่านั้นที่เริ่มลงชื่อกิจกรรมได้",
-        flags: MessageFlags.Ephemeral
       });
       return;
     }
 
     const missingPerms = getMissingPostPerms(interaction.channel, interaction.client.user.id);
     if (missingPerms.length > 0) {
-      await interaction.reply({
+      await replyEphemeral(interaction, {
         content: `ไม่สามารถสร้างกิจกรรมได้เนื่องจากขาดสิทธิ์: ${missingPerms.join(
           ", "
         )}`,
-        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -67,9 +63,8 @@ async function handleModalSubmit(interaction) {
       buildRegisterButton(ButtonStyle.Secondary)
     );
 
-    await interaction.reply({
+    await replyEphemeral(interaction, {
       content: "กำลังสร้างโพสต์ลงชื่อกิจกรรม...",
-      flags: MessageFlags.Ephemeral
     });
 
     const rosterMessage = await interaction.channel.send({
@@ -91,14 +86,34 @@ async function handleModalSubmit(interaction) {
     return;
   }
 
+  if (interaction.customId.startsWith("join_roster_modal:")) {
+    const rosterMessageId = interaction.customId.split(":")[1];
+    const targetRoster = getRoster(rosterMessageId);
+    if (!targetRoster) {
+      await replyEphemeral(interaction, {
+        content: "ไม่พบกิจกรรมนี้แล้ว",
+      });
+      return;
+    }
+
+    const dayChoice = interaction.fields.getStringSelectValues("join_roster_day_choice")[0];
+    addMemberToRoster(targetRoster.messageId, interaction.user.id, dayChoice);
+    await syncRosterMessage(interaction.guild, targetRoster.messageId, targetRoster.title);
+
+    const profile = getMemberInfo(interaction.guildId, interaction.user.id);
+    const displayName = profile?.ign || interaction.user.username;
+    await replyEphemeral(interaction, {
+      content: `ลงทะเบียนกิจกรรมในชื่อ **${displayName}** เรียบร้อย | วันที่: **${dayChoiceLabel(
+        dayChoice
+      )}**`,
+    });
+    return;
+  }
+
   if (interaction.customId === "setteam_modal" || interaction.customId.startsWith("setteam_modal:")) {
-    if (
-      !interaction.memberPermissions ||
-      !interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild)
-    ) {
-      await interaction.reply({
+    if (!hasManageGuildAccess(interaction)) {
+      await replyEphemeral(interaction, {
         content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ตั้งทีมได้",
-        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -109,9 +124,8 @@ async function handleModalSubmit(interaction) {
     );
     const members = [...selectedUsers.values()];
     if (members.length === 0) {
-      await interaction.reply({
+      await replyEphemeral(interaction, {
         content: "ไม่พบสมาชิกที่เลือก กรุณาลองใหม่",
-        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -122,18 +136,16 @@ async function handleModalSubmit(interaction) {
       : null;
     const targetRosterId = lockedRosterId;
     if (!targetRosterId) {
-      await interaction.reply({
+      await replyEphemeral(interaction, {
         content: "ไม่พบกิจกรรมที่ต้องการตั้งทีม กรุณาเปิดผ่าน /setteam หรือปุ่มตั้งทีมในกิจกรรม",
-        flags: MessageFlags.Ephemeral
       });
       return;
     }
     const targetRoster = getRoster(targetRosterId);
 
     if (!targetRoster) {
-      await interaction.reply({
+      await replyEphemeral(interaction, {
         content: "ไม่พบกิจกรรมที่เลือก อาจถูกลบไปแล้ว กรุณาลองใหม่",
-        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -175,9 +187,8 @@ async function handleModalSubmit(interaction) {
             .join(", ")}`
         );
       }
-      await interaction.reply({
+      await replyEphemeral(interaction, {
         content: lines.join("\n"),
-        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -211,10 +222,9 @@ async function handleModalSubmit(interaction) {
       );
     }
 
-    await interaction.reply({
+    await replyEphemeral(interaction, {
       content: summaryLines.join("\n"),
       embeds: [embed],
-      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -223,24 +233,20 @@ async function handleModalSubmit(interaction) {
 
   const ign = interaction.fields.getTextInputValue("register_ign_value").trim();
   const playerPath = interaction.fields.getStringSelectValues("register_path_value")[0];
-  const weapon = interaction.fields.getStringSelectValues("register_weapon_value")[0];
 
   setMemberInfo(interaction.guildId, interaction.user.id, {
     ign,
     class: playerPath,
-    path: playerPath,
-    weapon
+    path: playerPath
   });
 
-  await interaction.reply({
+  await replyEphemeral(interaction, {
     embeds: [
       buildRegistrationEmbed({
         ign,
-        playerPath,
-        weapon
+        playerPath
       }).setFooter({ text: "บันทึกการลงทะเบียนแล้ว พิมพ์ /register เพื่ออัปเดตข้อมูลได้ตลอดเวลา" })
     ],
-    flags: MessageFlags.Ephemeral
   });
 }
 

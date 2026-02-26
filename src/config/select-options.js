@@ -1,66 +1,33 @@
 const DEFAULT_PATH_OPTIONS = [
   {
-    label: "Bellstrike (ระฆังพิฆาต)",
-    value: "Bellstrike",
-    description: "ดาเมจระยะประชิดแถวหน้า เน้นความคล่องตัวหรือดาเมจเลือดไหล"
+    label: "Tank",
+    value: "Tank (Stonesplit - Might)",
+    description: "รวบกลุ่มศัตรู, CC"
   },
   {
-    label: "Silkbind (Jade) (พันไหมหยก)",
-    value: "Silkbind_Jade",
-    description: "ดาเมจปราณระยะไกล เน้นการควบคุมศัตรูและคอมโบกลางอากาศ"
+    label: "Healer",
+    value: "Healer (Silkbind - Deluge)",
+    description: "เติมเลือด , mythic skill เกราะ"
   },
   {
-    label: "Bamboocut (ไผ่ปลิดชีพ)",
-    value: "Bamboocut",
-    description: "ดาเมจระเบิดพลังรวดเร็ว ความคล่องตัวสูง และเข้าประชิดไว"
+    label: "Nameless",
+    value: "DPS - Nameless (Bellstrike - Splendor)",
+    description: "ดาเมจกลุ่ม , ultimate เกราะ"
   },
   {
-    label: "Silkbind (Deluge) (พันไหมวารี)",
-    value: "Silkbind_Deluge",
-    description: "ฮีลเลอร์หลักและซัพพอร์ตทีม สามารถชุบชีวิตและฮีลหมู่"
+    label: "Strategic sword",
+    value: "DPS - Strategic sword (Bellstrike - Umbra)",
+    description: "burst damage"
   },
   {
-    label: "Stonesplit (ศิลาแยก)",
-    value: "Stonesplit",
-    description: "สายแทงค์ผู้พิทักษ์ เชี่ยวชาญด้านโล่ การลดดาเมจ และยั่วยุศัตรู"
-  }
-];
-
-const DEFAULT_WEAPON_OPTIONS = [
-  {
-    label: "Nameless Sword (กระบี่ไร้นาม)",
-    value: "NamelessSword",
-    description: "อาวุธระยะประชิดที่สมดุล เน้นดาเมจต่อเนื่องและเคลื่อนที่ไว"
+    label: "ร่ม DPS",
+    value: "DPS - ร่ม (Silkbind - Jade)",
+    description: "กางโล่ลม"
   },
   {
-    label: "Strategic Sword (กระบี่กลยุทธ์)",
-    value: "StrategicSword",
-    description: "อาวุธระยะประชิดที่สมดุล เน้นดาเมจต่อเนื่องและเคลื่อนที่ไว"
-  },
-  {
-    label: "Mo Blade (ดาบยักษ์โม่)",
-    value: "Mo_Blade",
-    description: "ดาบสองมือขนาดใหญ่ ระยะกว้าง สำหรับสายแทงค์และป้องกัน"
-  },
-  {
-    label: "Umbrella (ร่ม)",
-    value: "Umbrella",
-    description: "อาวุธระยะกลาง-ไกล สำหรับสร้างป้อมยิงหรือช่วยทีม"
-  },
-  {
-    label: "Dual Blades (ดาบคู่)",
-    value: "Dual_Blades",
-    description: "โจมตีระยะประชิดรวดเร็วและต่อเนื่อง พร้อมดาเมจเบิร์สสูง"
-  },
-  {
-    label: "Fan (พัด)",
-    value: "Fan",
-    description: "เครื่องขยายปราณระยะไกล สำหรับสายฮีลหรือคอมโบยกศัตรู"
-  },
-  {
-    label: "Rope Dart (มีดบินปลายเชือก)",
-    value: "Rope_Dart",
-    description: "เน้นคุมระยะ จับตัวยาก และโจมตีจากมุมที่คาดไม่ถึง"
+    label: "ดาบคู่",
+    value: "DPS - ดาบคู่ (Bamboocut - Wind)",
+    description: "เล็งแนวหลัง / healer ฝั่งตรงข้าม"
   }
 ];
 
@@ -118,11 +85,9 @@ function parseOptionsFromEnv(envName, fallback) {
 }
 
 const PATH_OPTIONS = parseOptionsFromEnv("PATH_OPTIONS_JSON", DEFAULT_PATH_OPTIONS);
-const WEAPON_OPTIONS = parseOptionsFromEnv("WEAPON_OPTIONS_JSON", DEFAULT_WEAPON_OPTIONS);
 const TEAM_OPTIONS = parseOptionsFromEnv("TEAM_OPTIONS_JSON", DEFAULT_TEAM_OPTIONS);
 
 module.exports = {
   PATH_OPTIONS,
-  WEAPON_OPTIONS,
   TEAM_OPTIONS
 };

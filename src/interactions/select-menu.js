@@ -1,8 +1,10 @@
-const { MessageFlags, PermissionFlagsBits } = require("discord.js");
-const { getRoster, getRosterEntries } = require("../store");
+const { MessageFlags } = require("discord.js");
+const { addRosterMirrorMessage, getRoster, getRosterEntries } = require("../store");
 const { buildRosterComponentsV2, buildSetTeamModal } = require("../ui/builders");
 const { getMissingPostPerms } = require("../services/permissions");
 const { deleteRosterWithMessage } = require("../services/roster-messages");
+const { hasManageGuildAccess } = require("../utils/access");
+const { replyEphemeral } = require("../utils/interaction-response");
 
 async function handleSelectMenu(interaction) {
   if (
@@ -15,9 +17,8 @@ async function handleSelectMenu(interaction) {
   }
 
   if (!interaction.guildId) {
-    await interaction.reply({
+    await replyEphemeral(interaction, {
       content: "เมนูนี้ใช้ได้เฉพาะในเซิร์ฟเวอร์เท่านั้น",
-      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -33,13 +34,9 @@ async function handleSelectMenu(interaction) {
   }
 
   if (interaction.customId === "setteam_roster_pick") {
-    if (
-      !interaction.memberPermissions ||
-      !interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild)
-    ) {
-      await interaction.reply({
+    if (!hasManageGuildAccess(interaction)) {
+      await replyEphemeral(interaction, {
         content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ตั้งทีมได้",
-        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -49,13 +46,9 @@ async function handleSelectMenu(interaction) {
   }
 
   if (interaction.customId === "announce_roster_pick") {
-    if (
-      !interaction.memberPermissions ||
-      !interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild)
-    ) {
-      await interaction.reply({
+    if (!hasManageGuildAccess(interaction)) {
+      await replyEphemeral(interaction, {
         content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ประกาศกิจกรรมได้",
-        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -84,10 +77,19 @@ async function handleSelectMenu(interaction) {
       return;
     }
 
-    await interaction.channel.send({
-      components: buildRosterComponentsV2(targetRoster.title, data.entries),
+    const announcedMessage = await interaction.channel.send({
+      components: buildRosterComponentsV2(
+        targetRoster.title,
+        data.entries,
+        targetRoster.messageId
+      ),
       flags: MessageFlags.IsComponentsV2
     });
+    addRosterMirrorMessage(
+      targetRoster.messageId,
+      announcedMessage.channelId,
+      announcedMessage.id
+    );
 
     await interaction.update({
       content: `ประกาศกิจกรรม \`${targetRoster.title}\` เรียบร้อย`,
@@ -119,13 +121,9 @@ async function handleSelectMenu(interaction) {
     return;
   }
 
-  if (
-    !interaction.memberPermissions ||
-    !interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild)
-  ) {
-    await interaction.reply({
+  if (!hasManageGuildAccess(interaction)) {
+    await replyEphemeral(interaction, {
       content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ลบกิจกรรมได้",
-      flags: MessageFlags.Ephemeral
     });
     return;
   }

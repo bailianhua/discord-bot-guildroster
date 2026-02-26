@@ -4,16 +4,24 @@
 
 ## Overview
 
-This bot manages guild member profiles and event rosters in Discord, with manual and automatic weekly roster creation.
+Discord bot for guild profile registration and roster management, with weekly auto-created Guild War roster.
 
-## Main Features
+## Features
 
-- **Profile registration**: `IGN`, `Path`, `Weapon`
-- **Roster management**: join, leave, set-team, show, announce, delete
-- **Export roster**: Excel-compatible `.csv` download button
-- **Menu system**: `/menu` for a private menu, `/pinmenu` for a public menu message
-- **Weekly automation**: Auto-post Saturday and Sunday event rosters every Tuesday, and auto-clean old weekly rosters
-- **Manual weekly controls**: `/triggerweeklybatch` to run the Tuesday batch now, `/clearoldroster` to clear all auto-weekly rosters in the target channel
+- Profile registration: `IGN`, `Path`
+- Roster actions: join, leave, show, announce, delete
+- Join flow with day selection modal: `วันเสาร์`, `วันอาทิตย์`, `ทั้งเสาร์และอาทิตย์`
+- Excel-compatible export button (`.csv`)
+- Menu split:
+  - `/menu` for member actions (ephemeral)
+  - `/adminmenu` for admin actions (ephemeral)
+  - `/pinmenu` for a public menu message in channel
+- Weekly automation:
+  - Creates one `Guild War` roster every Tuesday at configured time
+  - Removes previous auto-weekly rosters
+- Manual weekly controls:
+  - `/triggerweeklybatch` to run Tuesday behavior now
+  - `/clearoldroster` to clear all auto-weekly rosters (including current week)
 
 ## Requirements
 
@@ -22,84 +30,127 @@ This bot manages guild member profiles and event rosters in Discord, with manual
 
 ## Quick Start
 
-1. Install dependencies using `npm install`
-2. Create environment file using `cp .env.example .env`
-3. Fill required env values in `.env` (`DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `DISCORD_GUILD_ID`)
-4. Run bot using `npm start` (Slash commands are deployed automatically on startup)
+1. Install dependencies: `npm install`
+2. Create env file: `cp .env.example .env`
+3. Fill required env values in `.env`:
+   - `DISCORD_TOKEN`
+   - `DISCORD_CLIENT_ID`
+   - `DISCORD_GUILD_ID` (recommended for dev command deployment)
+4. Start bot: `npm start`
 
 ## Environment Variables
 
 ### Core
 
-- `DISCORD_TOKEN`: Bot token
+- `DISCORD_TOKEN`: bot token
 - `DISCORD_CLIENT_ID`: Discord application client ID
-- `DISCORD_GUILD_ID`: Dev guild/server ID
+- `DISCORD_GUILD_ID`: target guild ID for guild command deployment
 
 ### Weekly Scheduler
 
-- `AUTO_ROSTER_ENABLED`: (optional, default: `true`)
-- `AUTO_ROSTER_CHANNEL_ID`: (required for auto mode)
-- `AUTO_ROSTER_GUILD_ID`: (optional, fallback: `DISCORD_GUILD_ID`)
-- `AUTO_ROSTER_TIMEZONE`: (optional, default: `Asia/Bangkok`)
-- `AUTO_ROSTER_HOUR`: (optional, default: `19`)
-- `AUTO_ROSTER_MINUTE`: (optional, default: `30`)
-- `AUTO_ROSTER_SAT_TITLE`: (optional)
-- `AUTO_ROSTER_SUN_TITLE`: (optional)
-- `AUTO_ROSTER_FORCE_EVENT`: (optional test override: `sat` or `sun`)
+- `AUTO_ROSTER_ENABLED`: optional, default `true`
+- `AUTO_ROSTER_CHANNEL_ID`: optional static target channel ID (must be paired with `AUTO_ROSTER_GUILD_ID`)
+- `AUTO_ROSTER_GUILD_ID`: optional static target guild ID (must be paired with `AUTO_ROSTER_CHANNEL_ID`)
+- `AUTO_ROSTER_TIMEZONE`: optional, default `Asia/Bangkok`
+- `AUTO_ROSTER_DAY`: optional, default `tue` (`mon|tue|wed|thu|fri|sat|sun`)
+- `AUTO_ROSTER_HOUR`: optional, default `19`
+- `AUTO_ROSTER_MINUTE`: optional, default `30`
+- `AUTO_ROSTER_TITLE`: optional, default `Guild War` (the bot auto-appends that week `วันเสาร์/วันอาทิตย์` dates)
+- `AUTO_ROSTER_FORCE_EVENT`: optional test override, value `guildwar`
 
-### Select Options Override
+### Select Option Overrides
 
-- `PATH_OPTIONS_JSON`: (optional)
-- `WEAPON_OPTIONS_JSON`: (optional)
-- `TEAM_OPTIONS_JSON`: (optional)
+- `PATH_OPTIONS_JSON`: optional JSON array
+- `TEAM_OPTIONS_JSON`: optional JSON array (logic kept for future use)
 
-> **Example:**
-> `PATH_OPTIONS_JSON=[{"label":"Tank","value":"Tank","description":"Frontline"}]`
-> `WEAPON_OPTIONS_JSON=[{"label":"Sword","value":"Sword","description":"Balanced melee"}]`
-> `TEAM_OPTIONS_JSON=[{"label":"Attack Team","value":"attack","description":"Offense"},{"label":"Defense Team","value":"defense","description":"Defense"}]`
+Example:
+
+```env
+PATH_OPTIONS_JSON=[{"label":"Tank","value":"Tank","description":"Frontline"}]
+TEAM_OPTIONS_JSON=[{"label":"Attack Team","value":"attack","description":"Offense"},{"label":"Defense Team","value":"defense","description":"Defense"}]
+```
 
 ## How To Use
 
-- **Member flow**: Run `/register` to fill profile, click buttons on the roster message to join/leave, and use `/myroster` to see your joined events.
-- **Admin manual roster flow**: Run `/startroster`, use `/setteam` or buttons to assign teams, export to Excel, and `/announceroster` to post publicly.
-- **Admin menu flow**: Use `/menu` for private quick actions or `/pinmenu` to post it publicly.
-- **Weekly automation flow**: Set `AUTO_ROSTER_CHANNEL_ID` and keep `AUTO_ROSTER_ENABLED=true`. The bot handles Tuesday creation and old roster cleanup automatically.
+### Member Flow
 
-## Command Reference
+1. Run `/register` and complete profile.
+2. In a roster post, click `ลงทะเบียนกิจกรรม`.
+3. Choose participation day in modal: `วันเสาร์`, `วันอาทิตย์`, or `ทั้งเสาร์และอาทิตย์`.
+4. Use `/myroster` to view your roster history and selected day per roster.
+
+### Admin Manual Roster Flow
+
+1. Run `/startroster`.
+2. Members join using the roster button and select day in modal.
+3. Click `ดาวน์โหลด Excel` button to export participant list.
+4. Run `/announceroster` to post roster summary publicly.
+
+### Menu Flow
+
+- `/menu`: private member menu
+- `/adminmenu`: private admin menu
+- `/pinmenu`: post public menu message in current channel
+
+### Weekly Auto Flow
+
+1. Set `AUTO_ROSTER_ENABLED=true`.
+2. In each server/channel you want to automate, run `/triggerweeklybatch` once (this registers that guild+channel in the scheduler list).
+3. Bot checks schedule continuously.
+4. On configured `AUTO_ROSTER_DAY` at configured time, it creates one `Guild War` roster per registered target.
+5. Old auto-weekly rosters are removed per target channel.
+
+## Commands
 
 - `/register` - Open registration modal
 - `/registerpanel` - (Admin) Post registration panel
-- `/menu` - Private action menu
-- `/pinmenu` - (Admin) Post public menu
-- `/triggerweeklybatch` - (Admin) Manually trigger Tuesday batch now
-- `/clearoldroster` - (Admin) Clear all auto-weekly rosters in target channel
-- `/startroster` - (Admin) Create roster post
+- `/menu` - Open private member menu
+- `/adminmenu` - (Admin) Open private admin menu
+- `/pinmenu` - (Admin) Post public menu in current channel
+- `/triggerweeklybatch` - (Admin) Run weekly Guild War batch now
+- `/clearoldroster` - (Admin) Clear all auto-weekly rosters in current channel
+- `/startroster` - (Admin) Create a new roster post
 - `/roster` - Show roster list
 - `/showroster` - Pick and show roster details
 - `/announceroster` - (Admin) Publicly announce roster
-- `/myroster` - Show your profile + rosters
-- `/setteam` - (Admin) Assign team by picker
+- `/myroster` - Show your profile and joined rosters
 - `/deleteroster` - (Admin) Delete selected roster
 
-## Testing Weekly Features
+## Testing Weekly Behavior
 
-1. Set `AUTO_ROSTER_ENABLED=true`, `AUTO_ROSTER_CHANNEL_ID=<test_channel_id>`, `AUTO_ROSTER_FORCE_EVENT=sat`, and set the time 1-2 minutes ahead.
-2. Restart bot and verify one roster is created at the scheduled minute without duplicates.
-3. Remove `AUTO_ROSTER_FORCE_EVENT` after testing.
-4. For a fast test, run `/triggerweeklybatch` and then `/clearoldroster`.
+### Fast Manual Test
+
+1. Configure `.env`:
+   - `AUTO_ROSTER_ENABLED=true`
+2. Start bot.
+3. Run `/triggerweeklybatch` in the test channel.
+4. Verify one `Guild War` roster is created and the channel is added to scheduler list.
+5. Run `/clearoldroster` in the same channel to clean test data.
+
+### Scheduled Test
+
+1. Set scheduler values close to current time:
+   - `AUTO_ROSTER_DAY=<today_day>`
+   - `AUTO_ROSTER_HOUR=<next_hour_or_current_hour>`
+   - `AUTO_ROSTER_MINUTE=<next_minute>`
+2. (Optional) set `AUTO_ROSTER_FORCE_EVENT=guildwar` for easier trigger window.
+3. Restart bot and wait for the target minute.
+4. Confirm roster is created once and not duplicated.
+5. Remove `AUTO_ROSTER_FORCE_EVENT` after test.
 
 ## How to get Channel ID
 
-1. In Discord, go to `User Settings` -> `Advanced` -> enable `Developer Mode`.
+1. In Discord: `User Settings -> Advanced -> Developer Mode`.
 2. Right-click target channel -> `Copy Channel ID`.
-3. Put it in `.env` (e.g., `AUTO_ROSTER_CHANNEL_ID=123456789012345678`).
+3. (Optional static target) put it in `.env`, for example:
+   - `AUTO_ROSTER_CHANNEL_ID=123456789012345678`
 
-## Data Storage & Project Structure
+## Data Storage and Structure
 
-- **Data file**: `data/store.json` (Member profiles are scoped by guild)
-- **src/index.js**: Bootstrap, login, and scheduler start
-- **src/commands.js**: Slash command definitions
-- **src/interactions/**: Command, button, modal, and select handlers
-- **src/services/**: Command deploy, permissions, message sync, weekly scheduler, export
-- **src/ui/builders.js**: Embeds, modals, and components builders
-- **src/store.js**: JSON storage layer
+- Data file: `data/store.json`
+- `src/index.js`: bootstrap and scheduler start
+- `src/commands.js`: slash commands
+- `src/interactions/`: command/button/modal/select handlers
+- `src/services/`: deploy, permissions, message sync, weekly scheduler, export
+- `src/ui/builders.js`: embeds/modals/components
+- `src/store.js`: JSON data access

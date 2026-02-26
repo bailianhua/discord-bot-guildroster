@@ -7,7 +7,9 @@ const MENU_BUTTONS = {
   startRoster: "menu_start_roster",
   showRoster: "menu_show_roster",
   announceRoster: "menu_announce_roster",
-  deleteRoster: "menu_delete_roster"
+  deleteRoster: "menu_delete_roster",
+  triggerWeeklyBatch: "menu_trigger_weekly_batch",
+  clearOldRoster: "menu_clear_old_roster"
 };
 
 module.exports = {

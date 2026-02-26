@@ -12,12 +12,16 @@ const commands = [
     .setName("menu")
     .setDescription("เปิดเมนูคำสั่งแบบกดปุ่ม (เห็นเฉพาะคุณ)"),
   new SlashCommandBuilder()
+    .setName("adminmenu")
+    .setDescription("เปิดเมนูแอดมินแบบกดปุ่ม (เห็นเฉพาะคุณ)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder()
     .setName("pinmenu")
     .setDescription("โพสต์เมนูแบบสาธารณะในช่องนี้")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder()
     .setName("triggerweeklybatch")
-    .setDescription("สั่งสร้างโรสเตอร์ประจำสัปดาห์ (เสาร์+อาทิตย์) ทันที")
+    .setDescription("สั่งสร้างโรสเตอร์ Guild War ประจำสัปดาห์ทันที")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder()
     .setName("clearoldroster")
@@ -47,10 +51,6 @@ const commands = [
   new SlashCommandBuilder()
     .setName("myroster")
     .setDescription("แสดงข้อมูลการลงทะเบียนและกิจกรรมของฉัน"),
-  new SlashCommandBuilder()
-    .setName("setteam")
-    .setDescription("เลือกกิจกรรมแล้วกำหนดทีมโจมตี/ป้องกันให้สมาชิก")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder()
     .setName("deleteroster")
     .setDescription("ลบกิจกรรมเก่าออกจากระบบ")

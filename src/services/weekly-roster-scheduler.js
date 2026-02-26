@@ -3,7 +3,11 @@ const {
   ButtonBuilder,
   ButtonStyle
 } = require("discord.js");
-const { createRoster, getAllRostersInGuild } = require("../store");
+const {
+  createRoster,
+  getAllRostersInGuild,
+  getAutoRosterTargets
+} = require("../store");
 const {
   buildRegisterButton,
   buildRosterActionRow,
@@ -16,6 +20,7 @@ const { deleteRosterWithMessage } = require("./roster-messages");
 const DEFAULT_TIMEZONE = "Asia/Bangkok";
 const DEFAULT_HOUR = 19;
 const DEFAULT_MINUTE = 30;
+const DEFAULT_WEEKDAY_INDEX = 2; // Tuesday
 
 function parseBoolean(value, fallback = false) {
   if (value === undefined || value === null || value === "") {
@@ -47,6 +52,43 @@ function resolveTimeZone(raw) {
 
 function pad2(n) {
   return String(n).padStart(2, "0");
+}
+
+function resolveScheduledWeekday(raw) {
+  const map = {
+    sun: 0,
+    sunday: 0,
+    mon: 1,
+    monday: 1,
+    tue: 2,
+    tues: 2,
+    tuesday: 2,
+    wed: 3,
+    wednesday: 3,
+    thu: 4,
+    thur: 4,
+    thurs: 4,
+    thursday: 4,
+    fri: 5,
+    friday: 5,
+    sat: 6,
+    saturday: 6
+  };
+  const normalized = String(raw || "").trim().toLowerCase();
+  if (!normalized) {
+    return DEFAULT_WEEKDAY_INDEX;
+  }
+  if (Object.prototype.hasOwnProperty.call(map, normalized)) {
+    return map[normalized];
+  }
+  console.warn(
+    `[weekly-roster] invalid AUTO_ROSTER_DAY "${raw}", falling back to "tue"`
+  );
+  return DEFAULT_WEEKDAY_INDEX;
+}
+
+function weekdayShortLabel(index) {
+  return ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][index] || "tue";
 }
 
 function addDaysToYmd(year, month, day, delta) {
@@ -109,6 +151,7 @@ function getEventBatch(
   weekdayIndex,
   hour,
   minute,
+  scheduledWeekdayIndex,
   scheduledHour,
   scheduledMinute,
   forcedEventKey = null
@@ -117,21 +160,15 @@ function getEventBatch(
     hour > scheduledHour || (hour === scheduledHour && minute >= scheduledMinute);
   if (!afterSchedule) return [];
 
-  const makeEvent = (eventKey) => ({
-    eventKey,
-    title:
-      eventKey === "sat"
-        ? process.env.AUTO_ROSTER_SAT_TITLE || "Guild War Saturday 19:30"
-        : process.env.AUTO_ROSTER_SUN_TITLE || "Guild War Sunday 19:30"
-  });
+  const makeEvent = (eventKey) => ({ eventKey });
 
-  if (forcedEventKey === "sat" || forcedEventKey === "sun") {
+  if (forcedEventKey === "guildwar") {
     return [makeEvent(forcedEventKey)];
   }
 
-  // Weekly batch publish: post both weekend rosters every Tuesday.
-  if (weekdayIndex === 2) {
-    return [makeEvent("sat"), makeEvent("sun")];
+  // Weekly batch publish: post one guild war roster on configured day.
+  if (weekdayIndex === scheduledWeekdayIndex) {
+    return [makeEvent("guildwar")];
   }
 
   return [];
@@ -231,14 +268,40 @@ async function ensureWeeklyRoster({
 }
 
 function getEventTitle(eventKey) {
-  return eventKey === "sat"
-    ? process.env.AUTO_ROSTER_SAT_TITLE || "Guild War Saturday 19:30"
-    : process.env.AUTO_ROSTER_SUN_TITLE || "Guild War Sunday 19:30";
+  if (eventKey === "guildwar") {
+    return process.env.AUTO_ROSTER_TITLE || "Guild War";
+  }
+  return process.env.AUTO_ROSTER_TITLE || "Guild War";
+}
+
+function formatYmd({ year, month, day }) {
+  return `${year}-${pad2(month)}-${pad2(day)}`;
+}
+
+function guildWarDateSuffix(weekKey) {
+  const parts = String(weekKey || "").split("-").map((part) => Number.parseInt(part, 10));
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) {
+    return "";
+  }
+
+  const [year, month, day] = parts;
+  const saturday = addDaysToYmd(year, month, day, 5);
+  const sunday = addDaysToYmd(year, month, day, 6);
+  return `วันเสาร์ ${formatYmd(saturday)} | วันอาทิตย์ ${formatYmd(sunday)}`;
+}
+
+function buildEventTitle(eventKey, weekKey) {
+  const baseTitle = getEventTitle(eventKey);
+  if (eventKey !== "guildwar") return baseTitle;
+
+  const suffix = guildWarDateSuffix(weekKey);
+  if (!suffix) return baseTitle;
+  return `${baseTitle} (${suffix})`;
 }
 
 async function runWeeklyRosterBatchOnce(
   client,
-  { guildId, channelId, timeZone, weekKey, eventKeys = ["sat", "sun"] }
+  { guildId, channelId, timeZone, weekKey, eventKeys = ["guildwar"] }
 ) {
   const guild = await client.guilds.fetch(guildId).catch(() => null);
   if (!guild) {
@@ -263,7 +326,7 @@ async function runWeeklyRosterBatchOnce(
   const skipped = [];
 
   for (const eventKey of eventKeys) {
-    if (eventKey !== "sat" && eventKey !== "sun") {
+    if (eventKey !== "guildwar") {
       skipped.push(eventKey);
       continue;
     }
@@ -275,7 +338,7 @@ async function runWeeklyRosterBatchOnce(
       weekKey: resolvedWeekKey,
       timeZone: normalizedTimeZone,
       eventKey,
-      title: getEventTitle(eventKey),
+      title: buildEventTitle(eventKey, resolvedWeekKey),
       skipCleanup: true
     });
 
@@ -324,37 +387,71 @@ async function clearOldAutoRostersOnce(client, { guildId, channelId, timeZone, w
   };
 }
 
-function startWeeklyRosterScheduler(client, { defaultGuildId } = {}) {
+function resolveSchedulerTargets() {
+  const envGuildId = String(process.env.AUTO_ROSTER_GUILD_ID || "").trim();
+  const envChannelId = String(process.env.AUTO_ROSTER_CHANNEL_ID || "").trim();
+  const savedTargets = getAutoRosterTargets();
+  const targets = [];
+  const seen = new Set();
+
+  const addTarget = (guildId, channelId, source) => {
+    if (!guildId || !channelId) return;
+    const key = `${guildId}:${channelId}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    targets.push({ guildId, channelId, source });
+  };
+
+  for (const target of savedTargets) {
+    addTarget(target.guildId, target.channelId, "saved");
+  }
+
+  if (envGuildId && envChannelId) {
+    addTarget(envGuildId, envChannelId, "env");
+  }
+
+  return targets;
+}
+
+function startWeeklyRosterScheduler(client) {
   const enabled = parseBoolean(process.env.AUTO_ROSTER_ENABLED, true);
   if (!enabled) {
     console.log("[weekly-roster] scheduler disabled by AUTO_ROSTER_ENABLED");
     return;
   }
 
-  const guildId = process.env.AUTO_ROSTER_GUILD_ID || defaultGuildId;
-  const channelId = process.env.AUTO_ROSTER_CHANNEL_ID;
-  if (!guildId || !channelId) {
-    console.log("[weekly-roster] scheduler disabled (missing AUTO_ROSTER_CHANNEL_ID or guild id)");
-    return;
-  }
-
   const timeZone = resolveTimeZone(process.env.AUTO_ROSTER_TIMEZONE);
 
+  const scheduledWeekdayIndex = resolveScheduledWeekday(process.env.AUTO_ROSTER_DAY);
+  const scheduledWeekdayLabel = weekdayShortLabel(scheduledWeekdayIndex);
   const scheduledHour = toInt(process.env.AUTO_ROSTER_HOUR, DEFAULT_HOUR);
   const scheduledMinute = toInt(process.env.AUTO_ROSTER_MINUTE, DEFAULT_MINUTE);
   const forcedEventRaw = String(process.env.AUTO_ROSTER_FORCE_EVENT || "")
     .trim()
     .toLowerCase();
   const forcedEventKey =
-    forcedEventRaw === "sat" || forcedEventRaw === "sun" ? forcedEventRaw : null;
+    forcedEventRaw === "guildwar" ? forcedEventRaw : null;
   let running = false;
   let lastRunDate = "";
   const runTokensForDate = new Set();
+  let warnedMissingTarget = false;
 
   const tick = async () => {
     if (running || !client.isReady()) return;
     running = true;
     try {
+      const targets = resolveSchedulerTargets();
+      if (!Array.isArray(targets) || targets.length === 0) {
+        if (!warnedMissingTarget) {
+          warnedMissingTarget = true;
+          console.log(
+            "[weekly-roster] waiting for targets; run /triggerweeklybatch in each target channel or set AUTO_ROSTER_GUILD_ID+AUTO_ROSTER_CHANNEL_ID"
+          );
+        }
+        return;
+      }
+      warnedMissingTarget = false;
+
       const now = getZonedNow(new Date(), timeZone);
       if (lastRunDate !== now.dateKey) {
         lastRunDate = now.dateKey;
@@ -365,27 +462,30 @@ function startWeeklyRosterScheduler(client, { defaultGuildId } = {}) {
         now.weekdayIndex,
         now.hour,
         now.minute,
+        scheduledWeekdayIndex,
         scheduledHour,
         scheduledMinute,
         forcedEventKey
       );
       if (events.length === 0) return;
 
-      for (const event of events) {
-        const runToken = `${now.dateKey}:${event.eventKey}`;
-        if (runTokensForDate.has(runToken)) continue;
+      for (const targetItem of targets) {
+        for (const event of events) {
+          const runToken = `${now.dateKey}:${targetItem.guildId}:${targetItem.channelId}:${event.eventKey}`;
+          if (runTokensForDate.has(runToken)) continue;
 
-        const result = await ensureWeeklyRoster({
-          client,
-          guildId,
-          channelId,
-          weekKey: now.weekKey,
-          timeZone,
-          eventKey: event.eventKey,
-          title: event.title
-        });
-        if (result === "created" || result === "exists") {
-          runTokensForDate.add(runToken);
+          const result = await ensureWeeklyRoster({
+            client,
+            guildId: targetItem.guildId,
+            channelId: targetItem.channelId,
+            weekKey: now.weekKey,
+            timeZone,
+            eventKey: event.eventKey,
+            title: buildEventTitle(event.eventKey, now.weekKey)
+          });
+          if (result === "created" || result === "exists") {
+            runTokensForDate.add(runToken);
+          }
         }
       }
     } catch (error) {
@@ -397,10 +497,17 @@ function startWeeklyRosterScheduler(client, { defaultGuildId } = {}) {
 
   tick();
   setInterval(tick, 30 * 1000);
+  const initialTargets = resolveSchedulerTargets();
   console.log(
-    `[weekly-roster] scheduler enabled guild=${guildId} channel=${channelId} ${timeZone} ${pad2(
-      scheduledHour
-    )}:${pad2(scheduledMinute)} (${forcedEventKey ? `forced=${forcedEventKey}` : "Tue batch: Sat+Sun"})`
+    `[weekly-roster] scheduler enabled ${
+      initialTargets.length > 0
+        ? `targets=${initialTargets.length}`
+        : "(target pending)"
+    } ${timeZone} ${pad2(scheduledHour)}:${pad2(scheduledMinute)} (${
+      forcedEventKey
+        ? `forced=${forcedEventKey}`
+        : `${scheduledWeekdayLabel} batch: Guild War`
+    })`
   );
 }
 

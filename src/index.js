@@ -24,7 +24,7 @@ const client = new Client({
 
 client.once("clientReady", () => {
   console.log(`Bot ready as ${client.user.tag}`);
-  startWeeklyRosterScheduler(client, { defaultGuildId: guildId });
+  startWeeklyRosterScheduler(client);
 });
 
 client.on("interactionCreate", async (interaction) => {
