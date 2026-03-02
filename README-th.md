@@ -38,6 +38,11 @@
    - `DISCORD_GUILD_ID` (แนะนำสำหรับ dev)
 4. เริ่มบอท: `npm start`
 
+## เอกสารกฎหมาย
+
+- Terms of Service: `docs/legal/TERMS_OF_SERVICE.md`
+- Privacy Policy: `docs/legal/PRIVACY_POLICY.md`
+
 ## ตัวแปรแวดล้อม
 
 ### ตัวแปรหลัก

@@ -38,6 +38,11 @@ Discord bot for guild profile registration and roster management, with weekly au
    - `DISCORD_GUILD_ID` (recommended for dev command deployment)
 4. Start bot: `npm start`
 
+## Legal
+
+- Terms of Service: `docs/legal/TERMS_OF_SERVICE.md`
+- Privacy Policy: `docs/legal/PRIVACY_POLICY.md`
+
 ## Environment Variables
 
 ### Core
