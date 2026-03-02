@@ -114,6 +114,7 @@ TEAM_OPTIONS_JSON=[{"label":"Attack Team","value":"attack","description":"Offens
 - `/showroster` - Pick and show roster details
 - `/announceroster` - (Admin) Publicly announce roster
 - `/myroster` - Show your profile and joined rosters
+- `/setteam` - (Admin) Pick roster and assign team to members
 - `/deleteroster` - (Admin) Delete selected roster
 
 ## Testing Weekly Behavior

@@ -229,7 +229,12 @@ async function handleModalSubmit(interaction) {
     return;
   }
 
-  if (interaction.customId !== "register_profile") return;
+  if (interaction.customId !== "register_profile") {
+    await replyEphemeral(interaction, {
+      content: "ฟอร์มนี้เป็นเวอร์ชันเก่า กรุณาเปิดใหม่ด้วย `/menu` หรือ `/adminmenu`",
+    });
+    return;
+  }
 
   const ign = interaction.fields.getTextInputValue("register_ign_value").trim();
   const playerPath = interaction.fields.getStringSelectValues("register_path_value")[0];

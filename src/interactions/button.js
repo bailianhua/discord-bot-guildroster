@@ -364,7 +364,12 @@ async function handleButton(interaction) {
 
   const isJoinRoster = interaction.customId.startsWith("join_roster:");
   const isLeaveRoster = interaction.customId.startsWith("leave_roster:");
-  if (!isJoinRoster && !isLeaveRoster) return;
+  if (!isJoinRoster && !isLeaveRoster) {
+    await replyEphemeral(interaction, {
+      content: "เมนูนี้เป็นเวอร์ชันเก่า กรุณาเปิดเมนูใหม่ด้วย `/menu` หรือ `/adminmenu`",
+    });
+    return;
+  }
 
   const messageId = interaction.customId.split(":")[1];
   const roster = getRoster(messageId);

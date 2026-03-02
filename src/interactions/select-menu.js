@@ -13,6 +13,9 @@ async function handleSelectMenu(interaction) {
     interaction.customId !== "setteam_roster_pick" &&
     interaction.customId !== "announce_roster_pick"
   ) {
+    await replyEphemeral(interaction, {
+      content: "เมนูนี้เป็นเวอร์ชันเก่า กรุณาเปิดใหม่ด้วย `/menu` หรือ `/adminmenu`",
+    });
     return;
   }
 

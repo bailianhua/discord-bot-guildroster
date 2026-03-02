@@ -22,6 +22,14 @@ const DEFAULT_HOUR = 19;
 const DEFAULT_MINUTE = 30;
 const DEFAULT_WEEKDAY_INDEX = 2; // Tuesday
 
+function logSchedulerError(scope, error, meta = null) {
+  if (meta) {
+    console.error(`[weekly-roster:${scope}]`, meta, error);
+    return;
+  }
+  console.error(`[weekly-roster:${scope}]`, error);
+}
+
 function parseBoolean(value, fallback = false) {
   if (value === undefined || value === null || value === "") {
     return fallback;
@@ -187,7 +195,16 @@ async function removeOldAutoRosters(guild, channelId, currentWeekKey) {
   });
 
   for (const roster of oldAuto) {
-    await deleteRosterWithMessage(guild, roster);
+    try {
+      await deleteRosterWithMessage(guild, roster);
+    } catch (error) {
+      logSchedulerError("cleanup-delete", error, {
+        guildId: guild.id,
+        channelId,
+        messageId: roster.messageId,
+        weekKey: currentWeekKey
+      });
+    }
   }
   return oldAuto.length;
 }
@@ -331,16 +348,26 @@ async function runWeeklyRosterBatchOnce(
       continue;
     }
 
-    const result = await ensureWeeklyRoster({
-      client,
-      guildId,
-      channelId,
-      weekKey: resolvedWeekKey,
-      timeZone: normalizedTimeZone,
-      eventKey,
-      title: buildEventTitle(eventKey, resolvedWeekKey),
-      skipCleanup: true
-    });
+    let result = "skip";
+    try {
+      result = await ensureWeeklyRoster({
+        client,
+        guildId,
+        channelId,
+        weekKey: resolvedWeekKey,
+        timeZone: normalizedTimeZone,
+        eventKey,
+        title: buildEventTitle(eventKey, resolvedWeekKey),
+        skipCleanup: true
+      });
+    } catch (error) {
+      logSchedulerError("manual-batch", error, {
+        guildId,
+        channelId,
+        eventKey,
+        weekKey: resolvedWeekKey
+      });
+    }
 
     if (result === "created") created.push(eventKey);
     else if (result === "exists") exists.push(eventKey);
@@ -376,14 +403,25 @@ async function clearOldAutoRostersOnce(client, { guildId, channelId, timeZone, w
     return meta.autoWeeklyGuildWar === true && roster.channelId === channelId;
   });
 
+  let deletedCount = 0;
   for (const roster of autoInChannel) {
-    await deleteRosterWithMessage(guild, roster);
+    try {
+      await deleteRosterWithMessage(guild, roster);
+      deletedCount += 1;
+    } catch (error) {
+      logSchedulerError("manual-clear", error, {
+        guildId,
+        channelId,
+        messageId: roster.messageId,
+        weekKey: resolvedWeekKey
+      });
+    }
   }
 
   return {
     weekKey: resolvedWeekKey,
     timeZone: normalizedTimeZone,
-    deletedCount: autoInChannel.length
+    deletedCount
   };
 }
 
@@ -474,29 +512,46 @@ function startWeeklyRosterScheduler(client) {
           const runToken = `${now.dateKey}:${targetItem.guildId}:${targetItem.channelId}:${event.eventKey}`;
           if (runTokensForDate.has(runToken)) continue;
 
-          const result = await ensureWeeklyRoster({
-            client,
-            guildId: targetItem.guildId,
-            channelId: targetItem.channelId,
-            weekKey: now.weekKey,
-            timeZone,
-            eventKey: event.eventKey,
-            title: buildEventTitle(event.eventKey, now.weekKey)
-          });
+          let result = "skip";
+          try {
+            result = await ensureWeeklyRoster({
+              client,
+              guildId: targetItem.guildId,
+              channelId: targetItem.channelId,
+              weekKey: now.weekKey,
+              timeZone,
+              eventKey: event.eventKey,
+              title: buildEventTitle(event.eventKey, now.weekKey)
+            });
+          } catch (error) {
+            logSchedulerError("tick-target", error, {
+              guildId: targetItem.guildId,
+              channelId: targetItem.channelId,
+              eventKey: event.eventKey,
+              weekKey: now.weekKey
+            });
+            continue;
+          }
           if (result === "created" || result === "exists") {
             runTokensForDate.add(runToken);
           }
         }
       }
     } catch (error) {
-      console.error("[weekly-roster] scheduler tick failed", error);
+      logSchedulerError("tick", error);
     } finally {
       running = false;
     }
   };
 
-  tick();
-  setInterval(tick, 30 * 1000);
+  const scheduleTick = () => {
+    tick().catch((error) => {
+      logSchedulerError("tick-unhandled", error);
+    });
+  };
+
+  scheduleTick();
+  setInterval(scheduleTick, 30 * 1000);
   const initialTargets = resolveSchedulerTargets();
   console.log(
     `[weekly-roster] scheduler enabled ${

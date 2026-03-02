@@ -114,6 +114,7 @@ TEAM_OPTIONS_JSON=[{"label":"Attack Team","value":"attack","description":"Offens
 - `/showroster` - เลือกและดูรายละเอียดโรสเตอร์
 - `/announceroster` - (แอดมิน) ประกาศโรสเตอร์แบบสาธารณะ
 - `/myroster` - แสดงโปรไฟล์และโรสเตอร์ที่เข้าร่วม
+- `/setteam` - (แอดมิน) เลือกโรสเตอร์แล้วกำหนดทีมให้สมาชิก
 - `/deleteroster` - (แอดมิน) ลบโรสเตอร์ที่เลือก
 
 ## วิธีทดสอบระบบรายสัปดาห์

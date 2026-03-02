@@ -52,6 +52,10 @@ const commands = [
     .setName("myroster")
     .setDescription("แสดงข้อมูลการลงทะเบียนและกิจกรรมของฉัน"),
   new SlashCommandBuilder()
+    .setName("setteam")
+    .setDescription("เลือกกิจกรรมแล้วกำหนดทีมให้สมาชิก")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder()
     .setName("deleteroster")
     .setDescription("ลบกิจกรรมเก่าออกจากระบบ")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)

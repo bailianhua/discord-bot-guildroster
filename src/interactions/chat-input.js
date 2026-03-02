@@ -461,7 +461,13 @@ async function handleChatInput(interaction, { client }) {
         )
       ],
     });
+    return;
   }
+
+  await replyEphemeral(interaction, {
+    content:
+      "ไม่รองรับคำสั่งนี้แล้ว หรือคำสั่งนี้ยังไม่อัปเดตในเซิร์ฟเวอร์นี้ กรุณาลองใหม่ด้วย `/menu` หรือ `/adminmenu`",
+  });
 }
 
 module.exports = { handleChatInput };
