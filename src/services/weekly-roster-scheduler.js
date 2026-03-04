@@ -250,12 +250,12 @@ async function ensureWeeklyRoster({
 
   const pendingEmbed = buildRosterEmbed(title, []);
   const pendingRow = new ActionRowBuilder().addComponents(
+    buildRegisterButton(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId("pending")
       .setLabel("เข้าร่วมกิจกรรม")
       .setStyle(ButtonStyle.Success)
-      .setDisabled(true),
-    buildRegisterButton(ButtonStyle.Secondary)
+      .setDisabled(true)
   );
 
   const rosterMessage = await channel.send({

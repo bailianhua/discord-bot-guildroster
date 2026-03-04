@@ -61,6 +61,8 @@ function createRoster({ messageId, guildId, channelId, title, createdBy, meta = 
     createdAt: new Date().toISOString(),
     memberIds: [],
     memberDays: {},
+    reserveMemberIds: [],
+    reserveMemberDays: {},
     memberTeams: {},
     mirrorMessages: [],
     ...(meta && typeof meta === "object" ? { meta } : {})
@@ -264,10 +266,135 @@ function getUserRostersInGuild(guildId, userId, limit = 25) {
       const inMembers = Array.isArray(r.memberIds) && r.memberIds.includes(userId);
       const inDays = Boolean(r.memberDays?.[userId]);
       const inTeams = Boolean(r.memberTeams?.[userId]);
-      return r.guildId === guildId && (inMembers || inDays || inTeams);
+      const inReserveMembers =
+        Array.isArray(r.reserveMemberIds) && r.reserveMemberIds.includes(userId);
+      const inReserveDays = Boolean(r.reserveMemberDays?.[userId]);
+      return (
+        r.guildId === guildId &&
+        (inMembers || inDays || inTeams || inReserveMembers || inReserveDays)
+      );
     })
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .slice(0, limit);
+}
+
+function dayChoiceToFlags(dayChoice) {
+  return {
+    saturday: dayChoice === "saturday" || dayChoice === "both",
+    sunday: dayChoice === "sunday" || dayChoice === "both"
+  };
+}
+
+function flagsToDayChoice({ saturday, sunday }) {
+  if (saturday && sunday) return "both";
+  if (saturday) return "saturday";
+  if (sunday) return "sunday";
+  return null;
+}
+
+function ensureRosterMemberCollections(roster) {
+  if (!Array.isArray(roster.memberIds)) {
+    roster.memberIds = [];
+  }
+
+  if (!roster.memberDays) {
+    roster.memberDays = {};
+  }
+
+  if (!Array.isArray(roster.reserveMemberIds)) {
+    roster.reserveMemberIds = [];
+  }
+
+  if (!roster.reserveMemberDays) {
+    roster.reserveMemberDays = {};
+  }
+
+  if (!roster.memberTeams) {
+    roster.memberTeams = {};
+  }
+}
+
+function applyMemberStatusByDay(roster, userId, dayChoice, mode) {
+  const isJoinMode = mode === "join";
+  const selected = dayChoiceToFlags(dayChoice);
+  if (!selected.saturday && !selected.sunday) {
+    return false;
+  }
+
+  const currentJoined = dayChoiceToFlags(roster.memberDays[userId]);
+  const currentReserve = dayChoiceToFlags(roster.reserveMemberDays[userId]);
+
+  for (const day of ["saturday", "sunday"]) {
+    if (!selected[day]) continue;
+    if (isJoinMode) {
+      currentJoined[day] = true;
+      currentReserve[day] = false;
+    } else {
+      currentReserve[day] = true;
+      currentJoined[day] = false;
+    }
+  }
+
+  const nextJoinedChoice = flagsToDayChoice(currentJoined);
+  const nextReserveChoice = flagsToDayChoice(currentReserve);
+
+  let changed = false;
+
+  const prevJoinedChoice = roster.memberDays[userId] || null;
+  if (nextJoinedChoice) {
+    if (prevJoinedChoice !== nextJoinedChoice) {
+      roster.memberDays[userId] = nextJoinedChoice;
+      changed = true;
+    }
+  } else if (Object.prototype.hasOwnProperty.call(roster.memberDays, userId)) {
+    delete roster.memberDays[userId];
+    changed = true;
+  }
+
+  const prevReserveChoice = roster.reserveMemberDays[userId] || null;
+  if (nextReserveChoice) {
+    if (prevReserveChoice !== nextReserveChoice) {
+      roster.reserveMemberDays[userId] = nextReserveChoice;
+      changed = true;
+    }
+  } else if (Object.prototype.hasOwnProperty.call(roster.reserveMemberDays, userId)) {
+    delete roster.reserveMemberDays[userId];
+    changed = true;
+  }
+
+  const hasJoined = Boolean(nextJoinedChoice);
+  const hasReserve = Boolean(nextReserveChoice);
+
+  if (hasJoined && !roster.memberIds.includes(userId)) {
+    roster.memberIds.push(userId);
+    changed = true;
+  }
+  if (!hasJoined) {
+    const before = roster.memberIds.length;
+    roster.memberIds = roster.memberIds.filter((id) => id !== userId);
+    if (roster.memberIds.length !== before) {
+      changed = true;
+    }
+  }
+
+  if (hasReserve && !roster.reserveMemberIds.includes(userId)) {
+    roster.reserveMemberIds.push(userId);
+    changed = true;
+  }
+  if (!hasReserve) {
+    const before = roster.reserveMemberIds.length;
+    roster.reserveMemberIds = roster.reserveMemberIds.filter((id) => id !== userId);
+    if (roster.reserveMemberIds.length !== before) {
+      changed = true;
+    }
+  }
+
+  if (!hasJoined && Object.prototype.hasOwnProperty.call(roster.memberTeams, userId)) {
+    delete roster.memberTeams[userId];
+    changed = true;
+  }
+
+  return changed;
 }
 
 function addMemberToRoster(messageId, userId, dayChoice = null) {
@@ -275,28 +402,27 @@ function addMemberToRoster(messageId, userId, dayChoice = null) {
   const roster = store.rosters[messageId];
   if (!roster) return null;
 
-  if (!roster.memberDays) {
-    roster.memberDays = {};
-  }
-
-  if (!roster.memberTeams) {
-    roster.memberTeams = {};
-  }
-
-  let changed = false;
-  if (!roster.memberIds.includes(userId)) {
-    roster.memberIds.push(userId);
-    changed = true;
-  }
-
-  if (dayChoice && roster.memberDays[userId] !== dayChoice) {
-    roster.memberDays[userId] = dayChoice;
-    changed = true;
-  }
+  ensureRosterMemberCollections(roster);
+  const changed = applyMemberStatusByDay(roster, userId, dayChoice, "join");
 
   if (changed) {
     writeStore(store);
   }
+  return roster;
+}
+
+function addReserveMemberToRoster(messageId, userId, dayChoice = null) {
+  const store = readStore();
+  const roster = store.rosters[messageId];
+  if (!roster) return null;
+
+  ensureRosterMemberCollections(roster);
+  const changed = applyMemberStatusByDay(roster, userId, dayChoice, "reserve");
+
+  if (changed) {
+    writeStore(store);
+  }
+
   return roster;
 }
 
@@ -305,21 +431,15 @@ function removeMemberFromRoster(messageId, userId) {
   const roster = store.rosters[messageId];
   if (!roster) return null;
 
-  if (!Array.isArray(roster.memberIds)) {
-    roster.memberIds = [];
-  }
-
-  if (!roster.memberTeams) {
-    roster.memberTeams = {};
-  }
-
-  if (!roster.memberDays) {
-    roster.memberDays = {};
-  }
+  ensureRosterMemberCollections(roster);
 
   const beforeCount = roster.memberIds.length;
   roster.memberIds = roster.memberIds.filter((id) => id !== userId);
   const removedFromMemberList = roster.memberIds.length !== beforeCount;
+
+  const beforeReserveCount = roster.reserveMemberIds.length;
+  roster.reserveMemberIds = roster.reserveMemberIds.filter((id) => id !== userId);
+  const removedFromReserveList = roster.reserveMemberIds.length !== beforeReserveCount;
 
   const hadTeam = Object.prototype.hasOwnProperty.call(roster.memberTeams, userId);
   if (hadTeam) {
@@ -331,7 +451,20 @@ function removeMemberFromRoster(messageId, userId) {
     delete roster.memberDays[userId];
   }
 
-  const changed = removedFromMemberList || hadTeam || hadDay;
+  const hadReserveDay = Object.prototype.hasOwnProperty.call(
+    roster.reserveMemberDays,
+    userId
+  );
+  if (hadReserveDay) {
+    delete roster.reserveMemberDays[userId];
+  }
+
+  const changed =
+    removedFromMemberList ||
+    removedFromReserveList ||
+    hadTeam ||
+    hadDay ||
+    hadReserveDay;
   if (changed) {
     writeStore(store);
   }
@@ -361,21 +494,24 @@ function getRosterEntries(messageId) {
   const roster = store.rosters[messageId];
   if (!roster) return null;
 
-  if (!roster.memberTeams) {
-    roster.memberTeams = {};
-  }
-
-  if (!roster.memberDays) {
-    roster.memberDays = {};
-  }
+  ensureRosterMemberCollections(roster);
 
   const membersByGuild = store.members[roster.guildId] || {};
-  const entries = roster.memberIds.map((userId) => ({
+  const joinedEntries = roster.memberIds.map((userId) => ({
     userId,
     profile: membersByGuild[userId] || null,
     dayChoice: roster.memberDays[userId] || null,
-    team: roster.memberTeams[userId] || null
+    team: roster.memberTeams[userId] || null,
+    isReserve: false
   }));
+  const reserveEntries = roster.reserveMemberIds.map((userId) => ({
+    userId,
+    profile: membersByGuild[userId] || null,
+    dayChoice: roster.reserveMemberDays[userId] || null,
+    team: null,
+    isReserve: true
+  }));
+  const entries = [...joinedEntries, ...reserveEntries];
 
   return {
     roster,
@@ -395,6 +531,7 @@ function deleteRoster(messageId) {
 
 module.exports = {
   addMemberToRoster,
+  addReserveMemberToRoster,
   addRosterMirrorMessage,
   clearRosterListViewMessage,
   createRoster,

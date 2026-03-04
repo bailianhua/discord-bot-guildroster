@@ -181,34 +181,51 @@ function buildRegisterButton(style = ButtonStyle.Primary) {
 
 function buildRosterActionRow(messageId) {
   return new ActionRowBuilder().addComponents(
+    buildRegisterButton(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId(`join_roster:${messageId}`)
       .setLabel("ลงทะเบียนกิจกรรม")
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
+      .setCustomId(`reserve_roster:${messageId}`)
+      .setLabel("ลงทะเบียนสำรอง")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
       .setCustomId(`leave_roster:${messageId}`)
       .setLabel("ยกเลิกลงชื่อ")
-      .setStyle(ButtonStyle.Danger),
-    buildRegisterButton(ButtonStyle.Secondary)
+      .setStyle(ButtonStyle.Danger)
   );
 }
 
 function buildRosterExportRow(messageId) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`download_roster_excel:${messageId}`)
+      .setCustomId(`download_roster_csv:${messageId}`)
+      .setLabel("ดาวน์โหลด CSV")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`download_roster_xlsx:${messageId}`)
       .setLabel("ดาวน์โหลด Excel")
-      .setStyle(ButtonStyle.Secondary)
+      .setStyle(ButtonStyle.Primary)
   );
 }
 
-function buildRosterDayChoiceModal(roster) {
+function buildRosterDayChoiceModalByType(roster, { mode = "join" } = {}) {
+  const isReserve = mode === "reserve";
+  const customId = isReserve
+    ? `reserve_roster_modal:${roster.messageId}`
+    : `join_roster_modal:${roster.messageId}`;
+  const selectCustomId = isReserve
+    ? "reserve_roster_day_choice"
+    : "join_roster_day_choice";
+  const titlePrefix = isReserve ? "สำรอง" : "ลงทะเบียน";
+
   const modal = new ModalBuilder()
-    .setCustomId(`join_roster_modal:${roster.messageId}`)
-    .setTitle(`ลงทะเบียน: ${truncateLabel(roster.title || "Guild War", 30)}`);
+    .setCustomId(customId)
+    .setTitle(`${titlePrefix}: ${truncateLabel(roster.title || "Guild War", 30)}`);
 
   const dayChoiceSelect = new StringSelectMenuBuilder()
-    .setCustomId("join_roster_day_choice")
+    .setCustomId(selectCustomId)
     .setPlaceholder("เลือกวันที่เข้าร่วม")
     .setRequired(true)
     .setMinValues(1)
@@ -241,10 +258,21 @@ function buildRosterDayChoiceModal(roster) {
   return modal;
 }
 
-function buildRegisterModal() {
+function buildRosterDayChoiceModal(roster) {
+  return buildRosterDayChoiceModalByType(roster, { mode: "join" });
+}
+
+function buildReserveDayChoiceModal(roster) {
+  return buildRosterDayChoiceModalByType(roster, { mode: "reserve" });
+}
+
+function buildRegisterModal(profile = null) {
   const modal = new ModalBuilder()
     .setCustomId("register_profile")
     .setTitle("ลงทะเบียนกิลด์");
+
+  const currentIgn = String(profile?.ign || "").trim();
+  const currentPath = String(profile?.path || profile?.class || "").trim();
 
   const ignInput = {
     type: 4,
@@ -252,8 +280,14 @@ function buildRegisterModal() {
     style: TextInputStyle.Short,
     required: true,
     max_length: 32,
-    placeholder: "ระบุชื่อในเกมของคุณ (IGN)"
+    placeholder: "ระบุชื่อในเกมของคุณ (IGN)",
+    ...(currentIgn ? { value: currentIgn } : {})
   };
+
+  const pathOptions = PATH_OPTIONS.map((option) => ({
+    ...option,
+    ...(currentPath && option.value === currentPath ? { default: true } : {})
+  }));
 
   const pathSelect = new StringSelectMenuBuilder()
     .setCustomId("register_path_value")
@@ -261,7 +295,7 @@ function buildRegisterModal() {
     .setRequired(true)
     .setMinValues(1)
     .setMaxValues(1)
-    .addOptions(PATH_OPTIONS);
+    .addOptions(pathOptions);
 
   modal.addLabelComponents(
     new LabelBuilder()
@@ -395,59 +429,137 @@ function splitLinesIntoChunks(lines, maxChars) {
   return chunks;
 }
 
-function buildRosterEmbed(title, entries) {
-  const pathLabelByValue = Object.fromEntries(
-    PATH_OPTIONS.map((option) => [option.value, option.label])
-  );
-
-  const buckets = createDayChoiceBuckets();
+function buildRosterDayBuckets(entries) {
+  const joined = createDayChoiceBuckets();
+  const reserve = createDayChoiceBuckets();
 
   entries.forEach((entry) => {
-    buckets[dayChoiceKey(entry.dayChoice)].push(entry);
+    const key = dayChoiceKey(entry.dayChoice);
+    if (entry.isReserve) {
+      reserve[key].push(entry);
+      return;
+    }
+    joined[key].push(entry);
   });
 
-  const formatMemberLine = (entry, idx) => {
-    const p = entry.profile;
-    if (!p) return `${idx + 1}. <@${entry.userId}> | ไม่พบข้อมูลโปรไฟล์`;
+  return { joined, reserve };
+}
 
-    const profilePath = p.path || p.class || "-";
-    const pathLabel = pathLabelByValue[profilePath] || profilePath;
-    return `${idx + 1}. <@${entry.userId}> | ${p.ign} | ${pathLabel}`;
+function buildPathLabelMap() {
+  return Object.fromEntries(PATH_OPTIONS.map((option) => [option.value, option.label]));
+}
+
+function formatRosterMemberLine(entry, idx, pathLabelByValue) {
+  const reserveTag = entry.isReserve ? " [สำรอง]" : "";
+  const profile = entry.profile;
+  if (!profile) {
+    return `${idx + 1}. <@${entry.userId}>${reserveTag} | ไม่พบข้อมูลโปรไฟล์`;
+  }
+
+  const profilePath = profile.path || profile.class || "-";
+  const pathLabel = pathLabelByValue[profilePath] || profilePath;
+  return `${idx + 1}. <@${entry.userId}>${reserveTag} | ${profile.ign} | ${pathLabel}`;
+}
+
+function buildBucketLines(joinedEntries, reserveEntries, pathLabelByValue) {
+  const joinedLines = joinedEntries.map((entry, idx) =>
+    formatRosterMemberLine(entry, idx, pathLabelByValue)
+  );
+  const reserveLines = reserveEntries.map((entry, idx) =>
+    formatRosterMemberLine(entry, idx + joinedEntries.length, pathLabelByValue)
+  );
+  return [...joinedLines, ...reserveLines];
+}
+
+function countUniqueMembersInEntries(entries) {
+  return new Set(entries.map((entry) => entry.userId)).size;
+}
+
+function countUniqueMembersInRoster(roster) {
+  const joinedIds = Array.isArray(roster.memberIds) ? roster.memberIds : [];
+  const reserveIds = Array.isArray(roster.reserveMemberIds) ? roster.reserveMemberIds : [];
+  return new Set([...joinedIds, ...reserveIds]).size;
+}
+
+function resolveMyRosterStatus(roster, userId) {
+  const inJoinedIds = Array.isArray(roster.memberIds) && roster.memberIds.includes(userId);
+  const joinedDayChoice = roster.memberDays?.[userId] || null;
+  const hasJoinedTeam = Boolean(roster.memberTeams?.[userId]);
+  const inReserveIds =
+    Array.isArray(roster.reserveMemberIds) && roster.reserveMemberIds.includes(userId);
+  const reserveDayChoice = roster.reserveMemberDays?.[userId] || null;
+  const hasJoined = inJoinedIds || joinedDayChoice || hasJoinedTeam;
+  const hasReserve = inReserveIds || reserveDayChoice;
+
+  if (hasJoined && hasReserve) {
+    return {
+      statusLabel: "ลงชื่อ+สำรอง",
+      dayText: `ลงชื่อ ${dayChoiceLabel(joinedDayChoice)} | สำรอง ${dayChoiceLabel(
+        reserveDayChoice
+      )}`
+    };
+  }
+
+  if (hasJoined) {
+    return {
+      statusLabel: "ลงชื่อ",
+      dayText: dayChoiceLabel(joinedDayChoice)
+    };
+  }
+
+  if (hasReserve) {
+    return {
+      statusLabel: "สำรอง",
+      dayText: dayChoiceLabel(reserveDayChoice)
+    };
+  }
+
+  return {
+    statusLabel: "-",
+    dayText: dayChoiceLabel(null)
   };
+}
 
-  const buildBucketFields = (bucketLabel, list) => {
-    if (list.length === 0) {
-      return [{ name: `${bucketLabel} (0)`, value: "ไม่มีสมาชิก" }];
+function buildRosterEmbed(title, entries) {
+  const pathLabelByValue = buildPathLabelMap();
+  const buckets = buildRosterDayBuckets(entries);
+  const joinedTotal = entries.filter((entry) => !entry.isReserve).length;
+  const reserveTotal = entries.length - joinedTotal;
+  const total = countUniqueMembersInEntries(entries);
+
+  const buildBucketFields = (bucketLabel, key) => {
+    const joinedEntries = buckets.joined[key];
+    const reserveEntries = buckets.reserve[key];
+    const joinedCount = joinedEntries.length;
+    const reserveCount = reserveEntries.length;
+    const header = `${bucketLabel} (ลงชื่อ ${joinedCount}) (สำรอง ${reserveCount})`;
+    const lines = buildBucketLines(joinedEntries, reserveEntries, pathLabelByValue);
+
+    if (lines.length === 0) {
+      return [{ name: header, value: "ไม่มีสมาชิก" }];
     }
 
-    const lines = list.map((entry, idx) => formatMemberLine(entry, idx));
     const chunks = splitLinesIntoChunks(lines, 1000);
     return chunks.map((chunk, idx) => ({
       name:
         idx === 0
-          ? `${bucketLabel} (${list.length})`
-          : `${bucketLabel} (ต่อ ${idx + 1}/${chunks.length})`,
+          ? header
+          : `${header} (ต่อ ${idx + 1}/${chunks.length})`,
       value: chunk
     }));
   };
 
-  const total = entries.length;
-  const saturdayCount = buckets.saturday.length;
-  const sundayCount = buckets.sunday.length;
-  const bothCount = buckets.both.length;
-  const unspecifiedCount = buckets.unspecified.length;
-
   const fields = [
-    ...buildBucketFields("วันเสาร์", buckets.saturday),
-    ...buildBucketFields("วันอาทิตย์", buckets.sunday),
-    ...buildBucketFields("ทั้งเสาร์และอาทิตย์", buckets.both),
-    ...buildBucketFields("ไม่ระบุ", buckets.unspecified)
+    ...buildBucketFields("วันเสาร์", "saturday"),
+    ...buildBucketFields("วันอาทิตย์", "sunday"),
+    ...buildBucketFields("ทั้งเสาร์และอาทิตย์", "both"),
+    ...buildBucketFields("ไม่ระบุ", "unspecified")
   ];
 
   return new EmbedBuilder()
     .setTitle(title)
     .setDescription(
-      `สมาชิกทั้งหมด ${total} คน | วันเสาร์ ${saturdayCount} | วันอาทิตย์ ${sundayCount} | ทั้งสองวัน ${bothCount} | ไม่ระบุ ${unspecifiedCount}`
+      `สมาชิกทั้งหมด ${total} คน | ลงชื่อ ${joinedTotal} คน | สำรอง ${reserveTotal} คน`
     )
     .addFields(fields)
     .setColor(0x00b894)
@@ -455,69 +567,52 @@ function buildRosterEmbed(title, entries) {
 }
 
 function buildRosterComponentsV2(title, entries, rosterMessageId) {
-  const pathLabelByValue = Object.fromEntries(
-    PATH_OPTIONS.map((option) => [option.value, option.label])
-  );
-
-  const buckets = createDayChoiceBuckets();
-
-  entries.forEach((entry) => {
-    buckets[dayChoiceKey(entry.dayChoice)].push(entry);
-  });
-
-  const formatMemberLine = (entry, idx) => {
-    const p = entry.profile;
-    if (!p) return `${idx + 1}. <@${entry.userId}> | ไม่พบข้อมูลโปรไฟล์`;
-
-    const profilePath = p.path || p.class || "-";
-    const pathLabel = pathLabelByValue[profilePath] || profilePath;
-    return `${idx + 1}. <@${entry.userId}> | ${p.ign} | ${pathLabel}`;
-  };
-
-  const splitBucketChunks = (list, maxChars = 3400) => {
-    if (list.length === 0) return ["ไม่มีสมาชิก"];
-    const lines = list.map((entry, idx) => formatMemberLine(entry, idx));
-    return splitLinesIntoChunks(lines, maxChars);
-  };
-
-  const total = entries.length;
-  const saturdayCount = buckets.saturday.length;
-  const sundayCount = buckets.sunday.length;
-  const bothCount = buckets.both.length;
-  const unspecifiedCount = buckets.unspecified.length;
+  const pathLabelByValue = buildPathLabelMap();
+  const buckets = buildRosterDayBuckets(entries);
+  const joinedTotal = entries.filter((entry) => !entry.isReserve).length;
+  const reserveTotal = entries.length - joinedTotal;
+  const total = countUniqueMembersInEntries(entries);
 
   const container = new ContainerBuilder()
     .setAccentColor(0x00b894)
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(`## ${title || "รายละเอียดกิจกรรม"}`),
       new TextDisplayBuilder().setContent(
-        `สมาชิกทั้งหมด ${total} คน | วันเสาร์ ${saturdayCount} | วันอาทิตย์ ${sundayCount} | ทั้งสองวัน ${bothCount} | ไม่ระบุ ${unspecifiedCount}`
+        `สมาชิกทั้งหมด ${total} คน | ลงชื่อ ${joinedTotal} คน | สำรอง ${reserveTotal} คน`
       )
     );
 
-  const addBucketSection = (teamLabel, list) => {
-    const chunks = splitBucketChunks(list);
+  const addBucketSection = (bucketLabel, key) => {
+    const joinedEntries = buckets.joined[key];
+    const reserveEntries = buckets.reserve[key];
+    const joinedCount = joinedEntries.length;
+    const reserveCount = reserveEntries.length;
+    const sectionTitle = `${bucketLabel} (ลงชื่อ ${joinedCount}) (สำรอง ${reserveCount})`;
+    const lines = buildBucketLines(joinedEntries, reserveEntries, pathLabelByValue);
+    const chunks =
+      lines.length > 0 ? splitLinesIntoChunks(lines, 3400) : ["ไม่มีสมาชิก"];
+
     container
       .addSeparatorComponents(new SeparatorBuilder())
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `### ${teamLabel} (${list.length})\n${chunks[0]}`
+          `### ${sectionTitle}\n${chunks[0]}`
         )
       );
 
     for (let i = 1; i < chunks.length; i += 1) {
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(
-          `### ${teamLabel} (ต่อ ${i + 1}/${chunks.length})\n${chunks[i]}`
+          `### ${sectionTitle} (ต่อ ${i + 1}/${chunks.length})\n${chunks[i]}`
         )
       );
     }
   };
 
-  addBucketSection("วันเสาร์", buckets.saturday);
-  addBucketSection("วันอาทิตย์", buckets.sunday);
-  addBucketSection("ทั้งเสาร์และอาทิตย์", buckets.both);
-  addBucketSection("ไม่ระบุ", buckets.unspecified);
+  addBucketSection("วันเสาร์", "saturday");
+  addBucketSection("วันอาทิตย์", "sunday");
+  addBucketSection("ทั้งเสาร์และอาทิตย์", "both");
+  addBucketSection("ไม่ระบุ", "unspecified");
 
   if (rosterMessageId) {
     container.addSeparatorComponents(new SeparatorBuilder()).addActionRowComponents(
@@ -538,10 +633,8 @@ function buildMyRosterEmbed(user, profile, rosters) {
   const rosterLines = rosters.length
     ? rosters.map((roster, idx) => {
       const createdAt = formatThaiDateTime(roster.createdAt);
-      const dayChoice = roster.memberDays?.[user.id] || null;
-      return `${idx + 1}. **${roster.title || `Roster ${roster.messageId}`}** | วัน: ${dayChoiceLabel(
-        dayChoice
-      )} | <#${roster.channelId}> | ${createdAt}`;
+      const { statusLabel, dayText } = resolveMyRosterStatus(roster, user.id);
+      return `${idx + 1}. **${roster.title || `Roster ${roster.messageId}`}** | วัน: ${dayText} | สถานะ: ${statusLabel} | <#${roster.channelId}> | ${createdAt}`;
     })
     : ["ยังไม่พบกิจกรรมที่คุณเข้าร่วมหรือถูกกำหนดทีม"];
 
@@ -573,10 +666,8 @@ function buildMyRosterComponentsV2(user, profile, rosters) {
   const rosterLines = rosters.length
     ? rosters.map((roster, idx) => {
       const createdAt = formatThaiDateTime(roster.createdAt);
-      const dayChoice = roster.memberDays?.[user.id] || null;
-      return `${idx + 1}. **${roster.title || `Roster ${roster.messageId}`}** | วัน: ${dayChoiceLabel(
-        dayChoice
-      )} | <#${roster.channelId}> | ${createdAt}`;
+      const { statusLabel, dayText } = resolveMyRosterStatus(roster, user.id);
+      return `${idx + 1}. **${roster.title || `Roster ${roster.messageId}`}** | วัน: ${dayText} | สถานะ: ${statusLabel} | <#${roster.channelId}> | ${createdAt}`;
     })
     : ["ยังไม่พบกิจกรรมที่คุณเข้าร่วมหรือถูกกำหนดทีม"];
   const rosterChunks = splitLinesIntoChunks(rosterLines, 3400);
@@ -624,12 +715,15 @@ function buildRosterPickerMenu(customId, placeholder, rosters) {
 function buildRosterListEmbed(rosters) {
   const lines = rosters.map((roster, idx) => {
     const createdAt = formatThaiDateTime(roster.createdAt);
-    const { total, saturdayCount, sundayCount, bothCount, unspecifiedCount } =
+    const joined =
       countMemberDayChoices(roster.memberIds || [], roster.memberDays || {});
+    const reserve =
+      countMemberDayChoices(roster.reserveMemberIds || [], roster.reserveMemberDays || {});
+    const total = countUniqueMembersInRoster(roster);
 
     return [
       `${idx + 1}) **${roster.title || `Roster ${roster.messageId}`}**`,
-      `สมาชิก ${total} | วันเสาร์ ${saturdayCount} | วันอาทิตย์ ${sundayCount} | ทั้งสองวัน ${bothCount} | ไม่ระบุ ${unspecifiedCount}`,
+      `สมาชิกทั้งหมด ${total} | ลงชื่อ ${joined.total} | สำรอง ${reserve.total}`,
       `ห้อง <#${roster.channelId}> | ${createdAt}`
     ].join("\n");
   });
@@ -651,12 +745,15 @@ function buildRosterListEmbed(rosters) {
 function buildRosterListComponentsV2(rosters) {
   const lines = rosters.map((roster, idx) => {
     const createdAt = formatThaiDateTime(roster.createdAt);
-    const { total, saturdayCount, sundayCount, bothCount, unspecifiedCount } =
+    const joined =
       countMemberDayChoices(roster.memberIds || [], roster.memberDays || {});
+    const reserve =
+      countMemberDayChoices(roster.reserveMemberIds || [], roster.reserveMemberDays || {});
+    const total = countUniqueMembersInRoster(roster);
 
     return [
       `### ${idx + 1}. ${roster.title || `Roster ${roster.messageId}`}`,
-      `**ทั้งหมด:** ${total} | **วันเสาร์:** ${saturdayCount} | **วันอาทิตย์:** ${sundayCount} | **ทั้งสองวัน:** ${bothCount} | **ไม่ระบุ:** ${unspecifiedCount}`,
+      `**สมาชิกทั้งหมด:** ${total} | **ลงชื่อ:** ${joined.total} | **สำรอง:** ${reserve.total}`,
       `ห้อง <#${roster.channelId}> | ${createdAt}`
     ].join("\n");
   });
@@ -687,6 +784,7 @@ module.exports = {
   buildUserMenuComponentsV2,
   buildRegisterButton,
   buildRegisterModal,
+  buildReserveDayChoiceModal,
   buildRosterDayChoiceModal,
   buildStartRosterModal,
   buildRegistrationEmbed,

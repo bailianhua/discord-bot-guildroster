@@ -1,3 +1,4 @@
+const XLSX = require("xlsx");
 const { PATH_OPTIONS } = require("../config/select-options");
 const { dayChoiceLabel } = require("../utils/day-choice");
 
@@ -20,7 +21,7 @@ function slugifyFilename(text) {
   return safe || "roster";
 }
 
-function buildRosterCsvBuffer(rosterTitle, entries, options = {}) {
+function buildExportRows(entries, options = {}) {
   const pathLabelByValue = Object.fromEntries(
     PATH_OPTIONS.map((option) => [option.value, option.label])
   );
@@ -30,6 +31,7 @@ function buildRosterCsvBuffer(rosterTitle, entries, options = {}) {
     "Discord name",
     "IGN",
     "Path/class",
+    "สถานะ",
     "วันที่เข้าร่วม"
   ];
 
@@ -43,11 +45,35 @@ function buildRosterCsvBuffer(rosterTitle, entries, options = {}) {
       discordName,
       entry.profile?.ign || "-",
       pathLabelByValue[profilePath] || profilePath,
+      entry.isReserve ? "สำรอง" : "ลงชื่อ",
       dayChoiceLabel(entry.dayChoice)
     ];
   });
 
-  const allRows = [header, ...rows];
+  return [header, ...rows];
+}
+
+function columnIndexToExcelLabel(index) {
+  let value = index;
+  let label = "";
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    label = String.fromCharCode(65 + remainder) + label;
+    value = Math.floor((value - 1) / 26);
+  }
+  return label;
+}
+
+function sanitizeWorksheetName(text) {
+  const safe = String(text || "Roster")
+    .replace(/[\\/*?:[\]]/g, " ")
+    .trim();
+  const truncated = safe.slice(0, 31).trim();
+  return truncated || "Roster";
+}
+
+function buildRosterCsvBuffer(rosterTitle, entries, options = {}) {
+  const allRows = buildExportRows(entries, options);
   const csvBody = allRows
     .map((row) => row.map((value) => csvEscape(value)).join(","))
     .join("\n");
@@ -62,4 +88,42 @@ function buildRosterCsvBuffer(rosterTitle, entries, options = {}) {
   };
 }
 
-module.exports = { buildRosterCsvBuffer };
+function buildRosterExcelBuffer(rosterTitle, entries, options = {}) {
+  const allRows = buildExportRows(entries, options);
+  const worksheet = XLSX.utils.aoa_to_sheet(allRows);
+  const totalColumns = allRows[0]?.length || 1;
+  const totalRows = Math.max(allRows.length, 1);
+  const lastCellRef = `${columnIndexToExcelLabel(totalColumns)}${totalRows}`;
+  worksheet["!autofilter"] = { ref: `A1:${lastCellRef}` };
+  worksheet["!cols"] = [
+    { wch: 28 },
+    { wch: 24 },
+    { wch: 18 },
+    { wch: 12 },
+    { wch: 18 }
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    workbook,
+    worksheet,
+    sanitizeWorksheetName(rosterTitle)
+  );
+
+  const fileBase = slugifyFilename(rosterTitle);
+  const buffer = XLSX.write(workbook, {
+    type: "buffer",
+    bookType: "xlsx",
+    compression: true
+  });
+
+  return {
+    buffer,
+    fileName: `${fileBase}.xlsx`
+  };
+}
+
+module.exports = {
+  buildRosterCsvBuffer,
+  buildRosterExcelBuffer
+};

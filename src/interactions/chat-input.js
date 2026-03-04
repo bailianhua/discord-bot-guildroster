@@ -50,7 +50,8 @@ async function handleChatInput(interaction, { client }) {
   }
 
   if (interaction.commandName === "register") {
-    await interaction.showModal(buildRegisterModal());
+    const profile = getMemberInfo(interaction.guildId, interaction.user.id);
+    await interaction.showModal(buildRegisterModal(profile));
     return;
   }
 
@@ -284,12 +285,12 @@ async function handleChatInput(interaction, { client }) {
     const title = interaction.options.getString("title") || "ลงชื่อสมาชิกกิลด์";
     const pendingEmbed = buildRosterEmbed(title, []);
     const row = new ActionRowBuilder().addComponents(
+      buildRegisterButton(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId("pending")
         .setLabel("เข้าร่วมกิจกรรม")
         .setStyle(ButtonStyle.Success)
-        .setDisabled(true),
-      buildRegisterButton(ButtonStyle.Secondary)
+        .setDisabled(true)
     );
 
     await replyEphemeral(interaction, {

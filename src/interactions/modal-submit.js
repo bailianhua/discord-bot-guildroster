@@ -5,6 +5,7 @@ const {
 } = require("discord.js");
 const {
   addMemberToRoster,
+  addReserveMemberToRoster,
   createRoster,
   getMemberInfo,
   getRoster,
@@ -55,12 +56,12 @@ async function handleModalSubmit(interaction) {
     const title = titleInput || "ลงชื่อสมาชิกกิลด์";
     const pendingEmbed = buildRosterEmbed(title, []);
     const row = new ActionRowBuilder().addComponents(
+      buildRegisterButton(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId("pending")
         .setLabel("เข้าร่วมกิจกรรม")
         .setStyle(ButtonStyle.Success)
-        .setDisabled(true),
-      buildRegisterButton(ButtonStyle.Secondary)
+        .setDisabled(true)
     );
 
     await replyEphemeral(interaction, {
@@ -86,7 +87,9 @@ async function handleModalSubmit(interaction) {
     return;
   }
 
-  if (interaction.customId.startsWith("join_roster_modal:")) {
+  const isJoinRosterModal = interaction.customId.startsWith("join_roster_modal:");
+  const isReserveRosterModal = interaction.customId.startsWith("reserve_roster_modal:");
+  if (isJoinRosterModal || isReserveRosterModal) {
     const rosterMessageId = interaction.customId.split(":")[1];
     const targetRoster = getRoster(rosterMessageId);
     if (!targetRoster) {
@@ -96,16 +99,34 @@ async function handleModalSubmit(interaction) {
       return;
     }
 
-    const dayChoice = interaction.fields.getStringSelectValues("join_roster_day_choice")[0];
-    addMemberToRoster(targetRoster.messageId, interaction.user.id, dayChoice);
+    const profile = getMemberInfo(interaction.guildId, interaction.user.id);
+    if (!profile) {
+      await replyEphemeral(interaction, {
+        content: "ต้องลงทะเบียนโปรไฟล์ก่อน จึงจะลงชื่อเข้าร่วมกิจกรรมได้",
+      });
+      return;
+    }
+
+    const dayChoiceSelectId = isReserveRosterModal
+      ? "reserve_roster_day_choice"
+      : "join_roster_day_choice";
+    const dayChoice = interaction.fields.getStringSelectValues(dayChoiceSelectId)[0];
+    if (isReserveRosterModal) {
+      addReserveMemberToRoster(targetRoster.messageId, interaction.user.id, dayChoice);
+    } else {
+      addMemberToRoster(targetRoster.messageId, interaction.user.id, dayChoice);
+    }
     await syncRosterMessage(interaction.guild, targetRoster.messageId, targetRoster.title);
 
-    const profile = getMemberInfo(interaction.guildId, interaction.user.id);
     const displayName = profile?.ign || interaction.user.username;
     await replyEphemeral(interaction, {
-      content: `ลงทะเบียนกิจกรรมในชื่อ **${displayName}** เรียบร้อย | วันที่: **${dayChoiceLabel(
-        dayChoice
-      )}**`,
+      content: isReserveRosterModal
+        ? `ลงชื่อสำรองในชื่อ **${displayName}** เรียบร้อย | วันที่: **${dayChoiceLabel(
+          dayChoice
+        )}**`
+        : `ลงทะเบียนกิจกรรมในชื่อ **${displayName}** เรียบร้อย | วันที่: **${dayChoiceLabel(
+          dayChoice
+        )}**`,
     });
     return;
   }

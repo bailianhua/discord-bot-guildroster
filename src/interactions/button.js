@@ -17,6 +17,7 @@ const {
   setAutoRosterTarget
 } = require("../store");
 const {
+  buildReserveDayChoiceModal,
   buildRosterDayChoiceModal,
   buildMyRosterComponentsV2,
   buildRegisterModal,
@@ -25,7 +26,10 @@ const {
   buildStartRosterModal,
   buildSetTeamModal
 } = require("../ui/builders");
-const { buildRosterCsvBuffer } = require("../services/roster-export");
+const {
+  buildRosterCsvBuffer,
+  buildRosterExcelBuffer
+} = require("../services/roster-export");
 const { syncRosterMessage } = require("../services/roster-messages");
 const {
   clearOldAutoRostersOnce,
@@ -48,12 +52,14 @@ async function handleButton(interaction) {
   }
 
   if (interaction.customId === REGISTER_BUTTON_ID) {
-    await interaction.showModal(buildRegisterModal());
+    const profile = getMemberInfo(interaction.guildId, interaction.user.id);
+    await interaction.showModal(buildRegisterModal(profile));
     return;
   }
 
   if (interaction.customId === MENU_BUTTONS.register) {
-    await interaction.showModal(buildRegisterModal());
+    const profile = getMemberInfo(interaction.guildId, interaction.user.id);
+    await interaction.showModal(buildRegisterModal(profile));
     return;
   }
 
@@ -298,7 +304,11 @@ async function handleButton(interaction) {
     return;
   }
 
-  if (interaction.customId.startsWith("download_roster_excel:")) {
+  const isLegacyCsvExport = interaction.customId.startsWith("download_roster_excel:");
+  const isCsvExport =
+    interaction.customId.startsWith("download_roster_csv:") || isLegacyCsvExport;
+  const isExcelExport = interaction.customId.startsWith("download_roster_xlsx:");
+  if (isCsvExport || isExcelExport) {
     const messageId = interaction.customId.split(":")[1];
     const targetRoster = getRoster(messageId);
     const data = getRosterEntries(messageId);
@@ -329,13 +339,15 @@ async function handleButton(interaction) {
       })
     );
 
-    const { buffer, fileName } = buildRosterCsvBuffer(targetRoster.title, data.entries, {
+    const exportBuilder = isExcelExport ? buildRosterExcelBuffer : buildRosterCsvBuffer;
+    const { buffer, fileName } = exportBuilder(targetRoster.title, data.entries, {
       displayNameByUserId
     });
     const file = new AttachmentBuilder(buffer, { name: fileName });
+    const fileTypeLabel = isExcelExport ? "Excel" : "CSV";
 
     await replyEphemeral(interaction, {
-      content: `ดาวน์โหลดไฟล์กิจกรรม \`${targetRoster.title}\` ได้ที่ไฟล์แนบด้านล่าง`,
+      content: `ดาวน์โหลดไฟล์กิจกรรม (${fileTypeLabel}) \`${targetRoster.title}\` ได้ที่ไฟล์แนบด้านล่าง`,
       files: [file],
     });
     return;
@@ -363,8 +375,9 @@ async function handleButton(interaction) {
   }
 
   const isJoinRoster = interaction.customId.startsWith("join_roster:");
+  const isReserveRoster = interaction.customId.startsWith("reserve_roster:");
   const isLeaveRoster = interaction.customId.startsWith("leave_roster:");
-  if (!isJoinRoster && !isLeaveRoster) {
+  if (!isJoinRoster && !isReserveRoster && !isLeaveRoster) {
     await replyEphemeral(interaction, {
       content: "เมนูนี้เป็นเวอร์ชันเก่า กรุณาเปิดเมนูใหม่ด้วย `/menu` หรือ `/adminmenu`",
     });
@@ -384,7 +397,7 @@ async function handleButton(interaction) {
     const leaveResult = removeMemberFromRoster(messageId, interaction.user.id);
     if (!leaveResult || !leaveResult.removed) {
       await replyEphemeral(interaction, {
-        content: "คุณยังไม่ได้ลงชื่อในกิจกรรมนี้",
+        content: "คุณยังไม่ได้ลงชื่อหรือสำรองในกิจกรรมนี้",
       });
       return;
     }
@@ -392,8 +405,21 @@ async function handleButton(interaction) {
     await syncRosterMessage(interaction.guild, messageId, roster.title);
 
     await replyEphemeral(interaction, {
-      content: "ยกเลิกการลงชื่อกิจกรรมเรียบร้อยแล้ว",
+      content: "ยกเลิกการลงชื่อ/สำรองกิจกรรมเรียบร้อยแล้ว",
     });
+    return;
+  }
+
+  const profile = getMemberInfo(interaction.guildId, interaction.user.id);
+  if (!profile) {
+    await replyEphemeral(interaction, {
+      content: "ต้องลงทะเบียนโปรไฟล์ก่อน จึงจะลงชื่อเข้าร่วมกิจกรรมได้",
+    });
+    return;
+  }
+
+  if (isReserveRoster) {
+    await interaction.showModal(buildReserveDayChoiceModal(roster));
     return;
   }
 

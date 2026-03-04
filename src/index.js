@@ -89,17 +89,10 @@ process.on("uncaughtException", (error) => {
   logError("process:uncaughtException", error);
 });
 
-process.on("multipleResolves", (type, promise, value) => {
-  console.warn(`[process:multipleResolves] type=${type}`);
-  if (promise) {
-    console.warn("[process:multipleResolves] promise:", promise);
-  }
-  if (value !== undefined) {
-    console.warn("[process:multipleResolves] value:", value);
-  }
-});
-
 process.on("warning", (warning) => {
+  if (warning?.name === "DeprecationWarning") {
+    return;
+  }
   console.warn("[process:warning]", warning);
 });
 
