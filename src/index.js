@@ -37,8 +37,9 @@ const client = new Client({
   }
 });
 
-client.once("clientReady", () => {
-  safeRun("clientReady", () => {
+// Change "clientReady" to "ready"
+client.once("ready", () => {
+  safeRun("ready", () => {
     console.log(`Bot ready as ${client.user.tag}`);
     startWeeklyRosterScheduler(client);
   });

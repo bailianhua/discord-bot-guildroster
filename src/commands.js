@@ -1,4 +1,6 @@
-const { PermissionFlagsBits, SlashCommandBuilder } = require("discord.js");
+// To this:
+const { PermissionFlagsBits } = require("discord.js");
+const { SlashCommandBuilder } = require("@discordjs/builders");
 
 const commands = [
   new SlashCommandBuilder()
