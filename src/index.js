@@ -1,6 +1,6 @@
 require("dotenv").config();
 
-const { Client, GatewayIntentBits } = require("discord.js");
+const { Client, Events, GatewayIntentBits } = require("discord.js");
 const { deployCommands } = require("./services/deploy-commands");
 const { handleInteractionCreate } = require("./interactions");
 const { startWeeklyRosterScheduler } = require("./services/weekly-roster-scheduler");
@@ -37,8 +37,7 @@ const client = new Client({
   }
 });
 
-// Change "clientReady" to "ready"
-client.once("ready", () => {
+client.once(Events.ClientReady, () => {
   safeRun("ready", () => {
     console.log(`Bot ready as ${client.user.tag}`);
     startWeeklyRosterScheduler(client);

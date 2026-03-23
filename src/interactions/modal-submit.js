@@ -54,7 +54,7 @@ async function handleModalSubmit(interaction) {
 
     const titleInput = interaction.fields.getTextInputValue("start_roster_title").trim();
     const title = titleInput || "ลงชื่อสมาชิกกิลด์";
-    const pendingEmbed = buildRosterEmbed(title, []);
+    const pendingEmbed = buildRosterEmbed(title, [], { eventMode: true });
     const row = new ActionRowBuilder().addComponents(
       buildRegisterButton(ButtonStyle.Primary),
       new ButtonBuilder()
@@ -78,10 +78,14 @@ async function handleModalSubmit(interaction) {
       guildId: interaction.guildId,
       channelId: interaction.channelId,
       title,
-      createdBy: interaction.user.id
+      createdBy: interaction.user.id,
+      meta: {
+        rosterKind: "event",
+        manualEvent: true
+      }
     });
 
-    const liveRow = buildRosterActionRow(rosterMessage.id);
+    const liveRow = buildRosterActionRow(rosterMessage.id, { eventMode: true });
     const exportRow = buildRosterExportRow(rosterMessage.id);
     await rosterMessage.edit({ components: [liveRow, exportRow] });
     return;
@@ -223,7 +227,9 @@ async function handleModalSubmit(interaction) {
     await syncRosterMessage(interaction.guild, targetRoster.messageId, targetRoster.title);
 
     const data = getRosterEntries(targetRoster.messageId);
-    const embed = buildRosterEmbed(targetRoster.title, data.entries);
+    const embed = buildRosterEmbed(targetRoster.title, data.entries, {
+      roster: data.roster
+    });
 
     const summaryLines = [
       `กำหนดทีม **${team === "attack" ? "Attack" : "Defense"}** ให้สมาชิก ${assignedIds.length} คนเรียบร้อย`

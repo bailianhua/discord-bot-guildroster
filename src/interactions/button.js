@@ -6,6 +6,7 @@ const {
 } = require("discord.js");
 const { MENU_BUTTONS, REGISTER_BUTTON_ID } = require("../constants");
 const {
+  addMemberToRoster,
   getAutoRosterTargets,
   getMemberInfo,
   getRecentRostersInChannel,
@@ -41,6 +42,16 @@ const { replyEphemeral } = require("../utils/interaction-response");
 function eventLabel(eventKey) {
   if (eventKey === "guildwar") return "Guild War";
   return eventKey;
+}
+
+function isEventRoster(roster) {
+  if (!roster || typeof roster !== "object") return false;
+  if (roster.meta?.autoWeeklyGuildWar === true) return false;
+  const rosterKind = String(roster.meta?.rosterKind || "").trim().toLowerCase();
+  if (rosterKind) {
+    return rosterKind === "event";
+  }
+  return roster.meta?.manualEvent === true || !roster.meta;
 }
 
 async function handleButton(interaction) {
@@ -414,6 +425,21 @@ async function handleButton(interaction) {
   if (!profile) {
     await replyEphemeral(interaction, {
       content: "ต้องลงทะเบียนโปรไฟล์ก่อน จึงจะลงชื่อเข้าร่วมกิจกรรมได้",
+    });
+    return;
+  }
+
+  if (isEventRoster(roster)) {
+    const alreadyJoined =
+      Array.isArray(roster.memberIds) && roster.memberIds.includes(interaction.user.id);
+    addMemberToRoster(messageId, interaction.user.id);
+    await syncRosterMessage(interaction.guild, messageId, roster.title);
+
+    const displayName = profile?.ign || interaction.user.username;
+    await replyEphemeral(interaction, {
+      content: alreadyJoined
+        ? `คุณลงทะเบียนกิจกรรมในชื่อ **${displayName}** ไว้อยู่แล้ว`
+        : `ลงทะเบียนกิจกรรมในชื่อ **${displayName}** เรียบร้อย`,
     });
     return;
   }

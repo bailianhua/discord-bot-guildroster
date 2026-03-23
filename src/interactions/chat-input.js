@@ -283,7 +283,7 @@ async function handleChatInput(interaction, { client }) {
     }
 
     const title = interaction.options.getString("title") || "ลงชื่อสมาชิกกิลด์";
-    const pendingEmbed = buildRosterEmbed(title, []);
+    const pendingEmbed = buildRosterEmbed(title, [], { eventMode: true });
     const row = new ActionRowBuilder().addComponents(
       buildRegisterButton(ButtonStyle.Primary),
       new ButtonBuilder()
@@ -307,10 +307,14 @@ async function handleChatInput(interaction, { client }) {
       guildId: interaction.guildId,
       channelId: interaction.channelId,
       title,
-      createdBy: interaction.user.id
+      createdBy: interaction.user.id,
+      meta: {
+        rosterKind: "event",
+        manualEvent: true
+      }
     });
 
-    const liveRow = buildRosterActionRow(rosterMessage.id);
+    const liveRow = buildRosterActionRow(rosterMessage.id, { eventMode: true });
     const exportRow = buildRosterExportRow(rosterMessage.id);
     await rosterMessage.edit({ components: [liveRow, exportRow] });
     return;

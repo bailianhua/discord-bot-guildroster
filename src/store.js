@@ -314,6 +314,43 @@ function ensureRosterMemberCollections(roster) {
   }
 }
 
+function isEventRoster(roster) {
+  if (!roster || typeof roster !== "object") return false;
+  if (roster.meta?.autoWeeklyGuildWar === true) return false;
+  const rosterKind = String(roster.meta?.rosterKind || "").trim().toLowerCase();
+  if (rosterKind) {
+    return rosterKind === "event";
+  }
+  return roster.meta?.manualEvent === true || !roster.meta;
+}
+
+function applyEventMemberStatus(roster, userId) {
+  let changed = false;
+
+  if (!roster.memberIds.includes(userId)) {
+    roster.memberIds.push(userId);
+    changed = true;
+  }
+
+  const beforeReserveCount = roster.reserveMemberIds.length;
+  roster.reserveMemberIds = roster.reserveMemberIds.filter((id) => id !== userId);
+  if (roster.reserveMemberIds.length !== beforeReserveCount) {
+    changed = true;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(roster.memberDays, userId)) {
+    delete roster.memberDays[userId];
+    changed = true;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(roster.reserveMemberDays, userId)) {
+    delete roster.reserveMemberDays[userId];
+    changed = true;
+  }
+
+  return changed;
+}
+
 function applyMemberStatusByDay(roster, userId, dayChoice, mode) {
   const isJoinMode = mode === "join";
   const selected = dayChoiceToFlags(dayChoice);
@@ -403,7 +440,9 @@ function addMemberToRoster(messageId, userId, dayChoice = null) {
   if (!roster) return null;
 
   ensureRosterMemberCollections(roster);
-  const changed = applyMemberStatusByDay(roster, userId, dayChoice, "join");
+  const changed = isEventRoster(roster)
+    ? applyEventMemberStatus(roster, userId)
+    : applyMemberStatusByDay(roster, userId, dayChoice, "join");
 
   if (changed) {
     writeStore(store);
@@ -417,7 +456,9 @@ function addReserveMemberToRoster(messageId, userId, dayChoice = null) {
   if (!roster) return null;
 
   ensureRosterMemberCollections(roster);
-  const changed = applyMemberStatusByDay(roster, userId, dayChoice, "reserve");
+  const changed = isEventRoster(roster)
+    ? applyEventMemberStatus(roster, userId)
+    : applyMemberStatusByDay(roster, userId, dayChoice, "reserve");
 
   if (changed) {
     writeStore(store);

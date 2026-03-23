@@ -179,22 +179,32 @@ function buildRegisterButton(style = ButtonStyle.Primary) {
     .setStyle(style);
 }
 
-function buildRosterActionRow(messageId) {
-  return new ActionRowBuilder().addComponents(
+function buildRosterActionRow(messageId, { eventMode = false } = {}) {
+  const row = new ActionRowBuilder().addComponents(
     buildRegisterButton(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId(`join_roster:${messageId}`)
       .setLabel("ลงทะเบียนกิจกรรม")
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(`reserve_roster:${messageId}`)
-      .setLabel("ลงทะเบียนสำรอง")
-      .setStyle(ButtonStyle.Secondary),
+      .setStyle(ButtonStyle.Success)
+  );
+
+  if (!eventMode) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`reserve_roster:${messageId}`)
+        .setLabel("ลงทะเบียนสำรอง")
+        .setStyle(ButtonStyle.Secondary)
+    );
+  }
+
+  row.addComponents(
     new ButtonBuilder()
       .setCustomId(`leave_roster:${messageId}`)
       .setLabel("ยกเลิกลงชื่อ")
       .setStyle(ButtonStyle.Danger)
   );
+
+  return row;
 }
 
 function buildRosterExportRow(messageId) {
@@ -481,6 +491,21 @@ function countUniqueMembersInRoster(roster) {
   return new Set([...joinedIds, ...reserveIds]).size;
 }
 
+function isEventRoster(roster) {
+  if (!roster || typeof roster !== "object") return false;
+  if (roster.meta?.autoWeeklyGuildWar === true) return false;
+  const rosterKind = String(roster.meta?.rosterKind || "").trim().toLowerCase();
+  if (rosterKind) {
+    return rosterKind === "event";
+  }
+  return roster.meta?.manualEvent === true || !roster.meta;
+}
+
+function getEventRegisteredEntries(entries) {
+  const joinedEntries = entries.filter((entry) => !entry.isReserve);
+  return joinedEntries.length > 0 ? joinedEntries : entries;
+}
+
 function resolveMyRosterStatus(roster, userId) {
   const inJoinedIds = Array.isArray(roster.memberIds) && roster.memberIds.includes(userId);
   const joinedDayChoice = roster.memberDays?.[userId] || null;
@@ -520,7 +545,29 @@ function resolveMyRosterStatus(roster, userId) {
   };
 }
 
-function buildRosterEmbed(title, entries) {
+function buildRosterEmbed(title, entries, { roster = null, eventMode = false } = {}) {
+  const isEventMode = eventMode || isEventRoster(roster);
+  if (isEventMode) {
+    const pathLabelByValue = buildPathLabelMap();
+    const registeredEntries = getEventRegisteredEntries(entries);
+    const total = countUniqueMembersInEntries(registeredEntries);
+    const lines = registeredEntries.map((entry, idx) =>
+      formatRosterMemberLine(entry, idx, pathLabelByValue)
+    );
+    const chunks = lines.length > 0 ? splitLinesIntoChunks(lines, 1000) : ["ไม่มีสมาชิก"];
+    const fields = chunks.map((chunk, idx) => ({
+      name: idx === 0 ? "ผู้ลงทะเบียน" : `ผู้ลงทะเบียน (ต่อ ${idx + 1}/${chunks.length})`,
+      value: chunk
+    }));
+
+    return new EmbedBuilder()
+      .setTitle(title)
+      .setDescription(`สมาชิกทั้งหมด ${total} คน | ลงชื่อ ${registeredEntries.length} คน`)
+      .addFields(fields)
+      .setColor(0x00b894)
+      .setTimestamp();
+  }
+
   const pathLabelByValue = buildPathLabelMap();
   const buckets = buildRosterDayBuckets(entries);
   const joinedTotal = entries.filter((entry) => !entry.isReserve).length;
@@ -566,7 +613,53 @@ function buildRosterEmbed(title, entries) {
     .setTimestamp();
 }
 
-function buildRosterComponentsV2(title, entries, rosterMessageId) {
+function buildRosterComponentsV2(
+  title,
+  entries,
+  rosterMessageId,
+  { roster = null, eventMode = false } = {}
+) {
+  const isEventMode = eventMode || isEventRoster(roster);
+  if (isEventMode) {
+    const pathLabelByValue = buildPathLabelMap();
+    const registeredEntries = getEventRegisteredEntries(entries);
+    const total = countUniqueMembersInEntries(registeredEntries);
+    const lines = registeredEntries.map((entry, idx) =>
+      formatRosterMemberLine(entry, idx, pathLabelByValue)
+    );
+    const chunks = lines.length > 0 ? splitLinesIntoChunks(lines, 3400) : ["ไม่มีสมาชิก"];
+
+    const container = new ContainerBuilder()
+      .setAccentColor(0x00b894)
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`## ${title || "รายละเอียดกิจกรรม"}`),
+        new TextDisplayBuilder().setContent(
+          `สมาชิกทั้งหมด ${total} คน | ลงชื่อ ${registeredEntries.length} คน`
+        )
+      )
+      .addSeparatorComponents(new SeparatorBuilder())
+      .addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(`### ผู้ลงทะเบียน\n${chunks[0]}`)
+      );
+
+    for (let i = 1; i < chunks.length; i += 1) {
+      container.addTextDisplayComponents(
+        new TextDisplayBuilder().setContent(
+          `### ผู้ลงทะเบียน (ต่อ ${i + 1}/${chunks.length})\n${chunks[i]}`
+        )
+      );
+    }
+
+    if (rosterMessageId) {
+      container.addSeparatorComponents(new SeparatorBuilder()).addActionRowComponents(
+        buildRosterActionRow(rosterMessageId, { eventMode: true }),
+        buildRosterExportRow(rosterMessageId)
+      );
+    }
+
+    return [container];
+  }
+
   const pathLabelByValue = buildPathLabelMap();
   const buckets = buildRosterDayBuckets(entries);
   const joinedTotal = entries.filter((entry) => !entry.isReserve).length;

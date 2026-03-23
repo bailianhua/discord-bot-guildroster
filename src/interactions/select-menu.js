@@ -84,7 +84,8 @@ async function handleSelectMenu(interaction) {
       components: buildRosterComponentsV2(
         targetRoster.title,
         data.entries,
-        targetRoster.messageId
+        targetRoster.messageId,
+        { roster: targetRoster }
       ),
       flags: MessageFlags.IsComponentsV2
     });
@@ -117,7 +118,8 @@ async function handleSelectMenu(interaction) {
       components: buildRosterComponentsV2(
         targetRoster.title,
         data.entries,
-        targetRoster.messageId
+        targetRoster.messageId,
+        { roster: targetRoster }
       ),
       flags: MessageFlags.IsComponentsV2
     });

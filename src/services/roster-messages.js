@@ -27,7 +27,8 @@ async function syncRosterMirrorMessages(guild, roster, title, entries) {
   const components = buildRosterComponentsV2(
     title || roster.title,
     entries,
-    roster.messageId
+    roster.messageId,
+    { roster }
   );
 
   for (const ref of mirrors) {
@@ -88,7 +89,9 @@ async function syncRosterMessage(guild, rosterMessageId, title) {
 
   const message = await fetchTextMessage(guild, data.roster.channelId, rosterMessageId);
   if (message) {
-    const embed = buildRosterEmbed(title || data.roster.title, data.entries);
+    const embed = buildRosterEmbed(title || data.roster.title, data.entries, {
+      roster: data.roster
+    });
     await message.edit({ embeds: [embed] }).catch(() => null);
   }
 
