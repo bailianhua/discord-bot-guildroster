@@ -1,31 +1,31 @@
 const {
   ActionRowBuilder,
-  ButtonBuilder,
+  AttachmentBuilder,
   ButtonStyle,
   MessageFlags
 } = require("discord.js");
 const {
-  createRoster,
+  getAllRostersInGuild,
   getAutoRosterTargets,
   getMemberInfo,
   getRecentRostersInChannel,
   getRecentRostersInGuild,
+  getRoster,
   setAutoRosterTarget,
   setRosterListViewMessage,
   getUserRostersInGuild
 } = require("../store");
 const {
+  buildAutoRosterCalendarEmbed,
   buildAdminMenuComponentsV2,
   buildMyRosterComponentsV2,
   buildUserMenuComponentsV2,
   buildRegisterButton,
   buildRegisterModal,
   buildRegistrationPanelEmbed,
-  buildRosterActionRow,
-  buildRosterExportRow,
-  buildRosterEmbed,
   buildRosterListComponentsV2,
   buildRosterPickerMenu,
+  buildStartRosterModal,
   buildSetTeamModal
 } = require("../ui/builders");
 const { getMissingPostPerms } = require("../services/permissions");
@@ -33,6 +33,11 @@ const {
   clearOldAutoRostersOnce,
   runWeeklyRosterBatchOnce
 } = require("../services/weekly-roster-scheduler");
+const { buildRosterCalendarImage } = require("../services/roster-calendar-image");
+const {
+  buildUpcomingCalendarDataFromRosters,
+  buildRosterCalendarData
+} = require("../utils/roster-calendar");
 const { hasManageGuildAccess } = require("../utils/access");
 const { replyEphemeral } = require("../utils/interaction-response");
 
@@ -271,52 +276,7 @@ async function handleChatInput(interaction, { client }) {
       });
       return;
     }
-
-    const missingPerms = getMissingPostPerms(interaction.channel, client.user.id);
-    if (missingPerms.length > 0) {
-      await replyEphemeral(interaction, {
-        content: `ไม่สามารถสร้างกิจกรรมได้เนื่องจากขาดสิทธิ์: ${missingPerms.join(
-          ", "
-        )}`,
-      });
-      return;
-    }
-
-    const title = interaction.options.getString("title") || "ลงชื่อสมาชิกกิลด์";
-    const pendingEmbed = buildRosterEmbed(title, [], { eventMode: true });
-    const row = new ActionRowBuilder().addComponents(
-      buildRegisterButton(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId("pending")
-        .setLabel("เข้าร่วมกิจกรรม")
-        .setStyle(ButtonStyle.Success)
-        .setDisabled(true)
-    );
-
-    await replyEphemeral(interaction, {
-      content: "กำลังสร้างโพสต์ลงชื่อกิจกรรม...",
-    });
-
-    const rosterMessage = await interaction.channel.send({
-      embeds: [pendingEmbed],
-      components: [row]
-    });
-
-    createRoster({
-      messageId: rosterMessage.id,
-      guildId: interaction.guildId,
-      channelId: interaction.channelId,
-      title,
-      createdBy: interaction.user.id,
-      meta: {
-        rosterKind: "event",
-        manualEvent: true
-      }
-    });
-
-    const liveRow = buildRosterActionRow(rosterMessage.id, { eventMode: true });
-    const exportRow = buildRosterExportRow(rosterMessage.id);
-    await rosterMessage.edit({ components: [liveRow, exportRow] });
+    await interaction.showModal(buildStartRosterModal());
     return;
   }
 
@@ -362,6 +322,68 @@ async function handleChatInput(interaction, { client }) {
         )
       ],
     });
+    return;
+  }
+
+  if (interaction.commandName === "calendar") {
+    const messageId = String(interaction.options.getString("message_id") || "").trim();
+    let targetRoster = null;
+    let calendarData = null;
+    const calendarTimeZone =
+      process.env.MANUAL_EVENT_TIMEZONE ||
+      process.env.AUTO_ROSTER_TIMEZONE ||
+      "Asia/Bangkok";
+
+    if (messageId) {
+      const directRoster = getRoster(messageId);
+      if (!directRoster || directRoster.guildId !== interaction.guildId) {
+        await replyEphemeral(interaction, {
+          content: "ไม่พบ roster ตาม message id ที่ระบุในเซิร์ฟเวอร์นี้",
+        });
+        return;
+      }
+      targetRoster = directRoster;
+      calendarData = buildRosterCalendarData(targetRoster);
+    } else {
+      const allRosters = getAllRostersInGuild(interaction.guildId);
+      calendarData = buildUpcomingCalendarDataFromRosters(allRosters, {
+        timeZone: calendarTimeZone,
+        daysAhead: 90
+      });
+    }
+
+    if (!calendarData) {
+      await replyEphemeral(interaction, {
+        content: messageId
+          ? "ไม่สามารถสร้างปฏิทินได้จาก roster นี้ (อาจไม่มีข้อมูลวันที่)"
+          : "ยังไม่พบกิจกรรมล่วงหน้าตั้งแต่วันนี้ถึงอีก 90 วันที่สามารถนำมาทำปฏิทินได้",
+      });
+      return;
+    }
+
+    const calendarImage = buildRosterCalendarImage(targetRoster, { calendarData });
+    const imageFileName = calendarImage?.fileName || null;
+    const calendarEmbed = buildAutoRosterCalendarEmbed(targetRoster, {
+      imageFileName,
+      calendarDataOverride: calendarData
+    });
+    if (!calendarEmbed) {
+      await replyEphemeral(interaction, {
+        content: "ไม่สามารถสร้างปฏิทินได้จากข้อมูล roster นี้ (อาจไม่มีข้อมูลวันที่)",
+      });
+      return;
+    }
+
+    const responsePayload = {
+      embeds: [calendarEmbed],
+    };
+    if (calendarImage?.pngBuffer && imageFileName) {
+      responsePayload.files = [
+        new AttachmentBuilder(calendarImage.pngBuffer, { name: imageFileName })
+      ];
+    }
+
+    await replyEphemeral(interaction, responsePayload);
     return;
   }
 

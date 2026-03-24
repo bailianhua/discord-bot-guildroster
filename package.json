@@ -6,13 +6,14 @@
   "type": "commonjs",
   "scripts": {
     "start": "node src/index.js",
-    "check": "node --check src/index.js && node --check src/store.js && node --check src/commands.js && node --check src/constants.js && node --check src/config/select-options.js && node --check src/ui/builders.js && node --check src/services/deploy-commands.js && node --check src/services/permissions.js && node --check src/services/roster-messages.js && node --check src/services/roster-export.js && node --check src/services/weekly-roster-scheduler.js && node --check src/interactions/index.js && node --check src/interactions/chat-input.js && node --check src/interactions/select-menu.js && node --check src/interactions/modal-submit.js && node --check src/interactions/button.js && node --check src/utils/day-choice.js && node --check src/utils/access.js && node --check src/utils/date-time.js && node --check src/utils/interaction-response.js"
+    "check": "node --check src/index.js && node --check src/store.js && node --check src/commands.js && node --check src/constants.js && node --check src/config/select-options.js && node --check src/ui/builders.js && node --check src/services/deploy-commands.js && node --check src/services/permissions.js && node --check src/services/roster-calendar-image.js && node --check src/services/roster-messages.js && node --check src/services/roster-export.js && node --check src/services/weekly-roster-scheduler.js && node --check src/interactions/index.js && node --check src/interactions/chat-input.js && node --check src/interactions/select-menu.js && node --check src/interactions/modal-submit.js && node --check src/interactions/button.js && node --check src/utils/day-choice.js && node --check src/utils/roster-calendar.js && node --check src/utils/access.js && node --check src/utils/date-time.js && node --check src/utils/interaction-response.js"
   },
   "engines": {
     "node": ">=18.17.0"
   },
   "dependencies": {
     "@discordjs/builders": "^1.13.1",
+    "@resvg/resvg-js": "^2.6.2",
     "discord.js": "^14.25.1",
     "dotenv": "^16.4.5",
     "xlsx": "^0.18.5"

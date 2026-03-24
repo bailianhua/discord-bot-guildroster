@@ -22,6 +22,10 @@ const {
 } = require("../ui/builders");
 const { getMissingPostPerms } = require("../services/permissions");
 const { syncRosterMessage } = require("../services/roster-messages");
+const {
+  getTodayYmdParts,
+  parseYmdParts
+} = require("../utils/roster-calendar");
 const { hasManageGuildAccess } = require("../utils/access");
 const { dayChoiceLabel } = require("../utils/day-choice");
 const { replyEphemeral } = require("../utils/interaction-response");
@@ -53,6 +57,31 @@ async function handleModalSubmit(interaction) {
     }
 
     const titleInput = interaction.fields.getTextInputValue("start_roster_title").trim();
+    const dayInput = interaction.fields.getTextInputValue("start_roster_day_v2").trim();
+    const monthInput = interaction.fields.getStringSelectValues("start_roster_month_v2")[0] || "";
+    const yearInput = interaction.fields.getStringSelectValues("start_roster_year_v2")[0] || "";
+    const eventTimeZone =
+      process.env.MANUAL_EVENT_TIMEZONE ||
+      process.env.AUTO_ROSTER_TIMEZONE ||
+      "Asia/Bangkok";
+    const todayParts = getTodayYmdParts(eventTimeZone);
+    const parsedDate = parseYmdParts({
+      day: dayInput,
+      month: monthInput,
+      year: yearInput
+    }, {
+      defaults: todayParts
+    });
+    if (!parsedDate) {
+      await replyEphemeral(interaction, {
+        content:
+          "วันกิจกรรมไม่ถูกต้อง (วันต้องเป็นตัวเลข 1-31) กรุณาตรวจสอบวัน/เดือน/ปี เช่น วัน 10 เดือน 04 ปี 2026",
+      });
+      return;
+    }
+    const eventDate = `${parsedDate.year}-${String(parsedDate.month).padStart(2, "0")}-${String(
+      parsedDate.day
+    ).padStart(2, "0")}`;
     const title = titleInput || "ลงชื่อสมาชิกกิลด์";
     const pendingEmbed = buildRosterEmbed(title, [], { eventMode: true });
     const row = new ActionRowBuilder().addComponents(
@@ -81,7 +110,9 @@ async function handleModalSubmit(interaction) {
       createdBy: interaction.user.id,
       meta: {
         rosterKind: "event",
-        manualEvent: true
+        manualEvent: true,
+        eventDate,
+        timeZone: eventTimeZone
       }
     });
 

@@ -10,6 +10,7 @@ const {
   SectionBuilder,
   StringSelectMenuBuilder,
   TextDisplayBuilder,
+  TextInputBuilder,
   TextInputStyle,
   UserSelectMenuBuilder
 } = require("discord.js");
@@ -24,7 +25,46 @@ const {
   dayChoiceKey,
   dayChoiceLabel
 } = require("../utils/day-choice");
+const {
+  buildRosterCalendarData,
+  getTodayYmdParts
+} = require("../utils/roster-calendar");
 const { formatThaiDateTime } = require("../utils/date-time");
+
+const MANUAL_EVENT_MONTH_SELECT_OPTIONS = [
+  { label: "มกราคม (01)", value: "01", description: "เดือนมกราคม" },
+  { label: "กุมภาพันธ์ (02)", value: "02", description: "เดือนกุมภาพันธ์" },
+  { label: "มีนาคม (03)", value: "03", description: "เดือนมีนาคม" },
+  { label: "เมษายน (04)", value: "04", description: "เดือนเมษายน" },
+  { label: "พฤษภาคม (05)", value: "05", description: "เดือนพฤษภาคม" },
+  { label: "มิถุนายน (06)", value: "06", description: "เดือนมิถุนายน" },
+  { label: "กรกฎาคม (07)", value: "07", description: "เดือนกรกฎาคม" },
+  { label: "สิงหาคม (08)", value: "08", description: "เดือนสิงหาคม" },
+  { label: "กันยายน (09)", value: "09", description: "เดือนกันยายน" },
+  { label: "ตุลาคม (10)", value: "10", description: "เดือนตุลาคม" },
+  { label: "พฤศจิกายน (11)", value: "11", description: "เดือนพฤศจิกายน" },
+  { label: "ธันวาคม (12)", value: "12", description: "เดือนธันวาคม" }
+];
+
+function buildManualEventYearSelectOptions(selectedYear) {
+  const currentYear = getTodayYmdParts(
+    process.env.MANUAL_EVENT_TIMEZONE ||
+    process.env.AUTO_ROSTER_TIMEZONE ||
+    "Asia/Bangkok"
+  ).year;
+  const startYear = currentYear - 1;
+  const endYear = currentYear + 8;
+  const options = [];
+  for (let year = startYear; year <= endYear; year += 1) {
+    options.push({
+      label: String(year),
+      value: String(year),
+      description: `ปี ${year}`,
+      ...(String(year) === String(selectedYear) ? { default: true } : {})
+    });
+  }
+  return options;
+}
 
 function buildRegistrationEmbed({ ign = "-", playerPath = "-" }) {
   return new EmbedBuilder()
@@ -135,6 +175,16 @@ function buildAdminMenuComponentsV2() {
           new ButtonBuilder()
             .setCustomId(MENU_BUTTONS.announceRoster)
             .setLabel("ประกาศ")
+            .setStyle(ButtonStyle.Secondary)
+        ),
+      new SectionBuilder()
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("**ปฏิทินกิจกรรม**\nแสดงปฏิทินจาก roster ล่าสุดที่มีวันที่")
+        )
+        .setButtonAccessory(
+          new ButtonBuilder()
+            .setCustomId(MENU_BUTTONS.calendar)
+            .setLabel("ปฏิทิน")
             .setStyle(ButtonStyle.Secondary)
         ),
       new SectionBuilder()
@@ -320,24 +370,71 @@ function buildRegisterModal(profile = null) {
 }
 
 function buildStartRosterModal() {
+  const eventTimeZone =
+    process.env.MANUAL_EVENT_TIMEZONE ||
+    process.env.AUTO_ROSTER_TIMEZONE ||
+    "Asia/Bangkok";
+  const todayParts = getTodayYmdParts(eventTimeZone);
+  const defaultMonthValue = String(todayParts.month).padStart(2, "0");
+  const monthSelectOptions = MANUAL_EVENT_MONTH_SELECT_OPTIONS.map((option) => ({
+    ...option,
+    ...(option.value === defaultMonthValue ? { default: true } : {})
+  }));
+
   const modal = new ModalBuilder()
     .setCustomId("start_roster_modal")
     .setTitle("เริ่มกิจกรรม");
 
-  const titleInput = {
-    type: 4,
-    custom_id: "start_roster_title",
-    style: TextInputStyle.Short,
-    required: false,
-    max_length: 80,
-    placeholder: "ลงชื่อสมาชิกกิลด์"
-  };
+  const dayInput = new TextInputBuilder()
+    .setCustomId("start_roster_day_v2")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMinLength(1)
+    .setMaxLength(2)
+    .setPlaceholder("เช่น 7 หรือ 07")
+    .setValue(String(todayParts.day));
+
+
+  const monthSelect = new StringSelectMenuBuilder()
+    .setCustomId("start_roster_month_v2")
+    .setPlaceholder("เลือกเดือน")
+    .setRequired(true)
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(monthSelectOptions);
+
+  const yearSelect = new StringSelectMenuBuilder()
+    .setCustomId("start_roster_year_v2")
+    .setPlaceholder("เลือกปี")
+    .setRequired(true)
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(buildManualEventYearSelectOptions(todayParts.year));
+
+  const titleInput = new TextInputBuilder()
+    .setCustomId("start_roster_title")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(80)
+    .setPlaceholder("ลงชื่อสมาชิกกิลด์");
 
   modal.addLabelComponents(
     new LabelBuilder()
       .setLabel("หัวข้อกิจกรรม (ไม่บังคับ)")
       .setDescription("เว้นว่างเพื่อใช้หัวข้อเริ่มต้น")
-      .setTextInputComponent(titleInput)
+      .setTextInputComponent(titleInput),
+    new LabelBuilder()
+      .setLabel("วัน")
+      .setDescription("ระบุเป็นตัวเลข 1-31")
+      .setTextInputComponent(dayInput),
+    new LabelBuilder()
+      .setLabel("เดือน")
+      .setDescription("เลือกเดือนของกิจกรรม")
+      .setStringSelectMenuComponent(monthSelect),
+    new LabelBuilder()
+      .setLabel("ปี")
+      .setDescription("เลือกปีของกิจกรรม")
+      .setStringSelectMenuComponent(yearSelect)
   );
 
   return modal;
@@ -894,7 +991,54 @@ function buildRosterListComponentsV2(rosters) {
   return [container];
 }
 
+function buildEventLine(item, fallbackEventName = null) {
+  const dayLabel = String(item?.dayLabel || "วันกิจกรรม");
+  const date = String(item?.date || "-");
+  const eventName = String(item?.eventName || fallbackEventName || "").trim();
+  if (!eventName) return `${dayLabel}: ${date}`;
+  return `${dayLabel}: ${date} - ${eventName}`;
+}
+
+function buildAutoRosterCalendarEmbed(
+  roster,
+  { imageFileName = null, calendarDataOverride = null } = {}
+) {
+  const calendarData = calendarDataOverride || buildRosterCalendarData(roster);
+  if (!calendarData) return null;
+  const totalEvents = (calendarData.eventItems || []).length;
+
+  const embed = new EmbedBuilder()
+    .setTitle("ปฏิทินกิจกรรม LadpraoBros")
+    .setDescription(
+      [
+        `กิจกรรม: **${roster?.title || "รวมกิจกรรมล่วงหน้า"}**`,
+        ...(calendarData.weekKey ? [`สัปดาห์: ${calendarData.weekKey}`] : []),
+        ...(calendarData.window
+          ? [`ช่วงวันที่: ${calendarData.window.from} ถึง ${calendarData.window.to}`]
+          : []),
+        `จำนวนกิจกรรม: ${totalEvents} รายการ`,
+        ...(!imageFileName
+          ? (calendarData.eventItems || [])
+            .slice(0, 10)
+            .map((item) => buildEventLine(item, roster?.title || "Guild War"))
+          : []),
+        ...(!imageFileName && totalEvents > 10
+          ? [`และอีก ${totalEvents - 10} รายการ`]
+          : []),
+        `เขตเวลา: ${calendarData.timeZone}`
+      ].join("\n")
+    );
+
+  if (imageFileName) {
+    embed.setImage(`attachment://${imageFileName}`);
+  }
+
+  embed.setColor(0x3498db).setTimestamp();
+  return embed;
+}
+
 module.exports = {
+  buildAutoRosterCalendarEmbed,
   buildAdminMenuComponentsV2,
   buildMyRosterComponentsV2,
   buildMyRosterEmbed,

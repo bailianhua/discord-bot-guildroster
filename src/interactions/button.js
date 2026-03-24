@@ -8,6 +8,7 @@ const { MENU_BUTTONS, REGISTER_BUTTON_ID } = require("../constants");
 const {
   addMemberToRoster,
   addReserveMemberToRoster,
+  getAllRostersInGuild,
   getAutoRosterTargets,
   getMemberInfo,
   getRecentRostersInChannel,
@@ -19,6 +20,7 @@ const {
   setAutoRosterTarget
 } = require("../store");
 const {
+  buildAutoRosterCalendarEmbed,
   buildReserveDayChoiceModal,
   buildRosterDayChoiceModal,
   buildMyRosterComponentsV2,
@@ -32,11 +34,15 @@ const {
   buildRosterCsvBuffer,
   buildRosterExcelBuffer
 } = require("../services/roster-export");
+const { buildRosterCalendarImage } = require("../services/roster-calendar-image");
 const { syncRosterMessage } = require("../services/roster-messages");
 const {
   clearOldAutoRostersOnce,
   runWeeklyRosterBatchOnce
 } = require("../services/weekly-roster-scheduler");
+const {
+  buildUpcomingCalendarDataFromRosters
+} = require("../utils/roster-calendar");
 const { hasManageGuildAccess } = require("../utils/access");
 const { replyEphemeral } = require("../utils/interaction-response");
 
@@ -191,6 +197,58 @@ async function handleButton(interaction) {
         )
       ],
     });
+    return;
+  }
+
+  if (interaction.customId === MENU_BUTTONS.calendar) {
+    if (!hasManageGuildAccess(interaction)) {
+      await replyEphemeral(interaction, {
+        content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ดูปฏิทินผ่านเมนูแอดมินได้",
+      });
+      return;
+    }
+
+    const calendarTimeZone =
+      process.env.MANUAL_EVENT_TIMEZONE ||
+      process.env.AUTO_ROSTER_TIMEZONE ||
+      "Asia/Bangkok";
+    const allRosters = getAllRostersInGuild(interaction.guildId);
+    const calendarData = buildUpcomingCalendarDataFromRosters(allRosters, {
+      timeZone: calendarTimeZone,
+      daysAhead: 90
+    });
+
+    if (!calendarData) {
+      await replyEphemeral(interaction, {
+        content:
+          "ยังไม่พบกิจกรรมล่วงหน้าตั้งแต่วันนี้ถึงอีก 90 วันที่สามารถนำมาทำปฏิทินได้",
+      });
+      return;
+    }
+
+    const calendarImage = buildRosterCalendarImage(null, { calendarData });
+    const imageFileName = calendarImage?.fileName || null;
+    const calendarEmbed = buildAutoRosterCalendarEmbed(null, {
+      imageFileName,
+      calendarDataOverride: calendarData
+    });
+    if (!calendarEmbed) {
+      await replyEphemeral(interaction, {
+        content: "ไม่สามารถสร้างปฏิทินได้จากข้อมูล roster นี้ (อาจไม่มีข้อมูลวันที่)",
+      });
+      return;
+    }
+
+    const responsePayload = {
+      embeds: [calendarEmbed],
+    };
+    if (calendarImage?.pngBuffer && imageFileName) {
+      responsePayload.files = [
+        new AttachmentBuilder(calendarImage.pngBuffer, { name: imageFileName })
+      ];
+    }
+
+    await replyEphemeral(interaction, responsePayload);
     return;
   }
 

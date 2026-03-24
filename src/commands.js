@@ -32,20 +32,23 @@ const commands = [
   new SlashCommandBuilder()
     .setName("startroster")
     .setDescription("เริ่มโพสต์ลงชื่อกิจกรรม (Roster)")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addStringOption((option) =>
-      option
-        .setName("title")
-        .setDescription("หัวข้อกิจกรรม")
-        .setRequired(false)
-        .setMaxLength(80)
-    ),
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder()
     .setName("roster")
     .setDescription("แสดงรายการกิจกรรมที่เคยสร้าง"),
   new SlashCommandBuilder()
     .setName("showroster")
     .setDescription("เลือกชื่อกิจกรรมเพื่อดูรายละเอียด"),
+  new SlashCommandBuilder()
+    .setName("calendar")
+    .setDescription("แสดงปฏิทินจาก roster ที่มีวันที่")
+    .addStringOption((option) =>
+      option
+        .setName("message_id")
+        .setDescription("ระบุ message id ของ roster ที่ต้องการดู (ไม่บังคับ)")
+        .setRequired(false)
+        .setMaxLength(30)
+    ),
   new SlashCommandBuilder()
     .setName("announceroster")
     .setDescription("เลือกกิจกรรมแล้วประกาศรายละเอียดแบบสาธารณะในช่อง")
