@@ -188,14 +188,12 @@ function buildRosterActionRow(messageId, { eventMode = false } = {}) {
       .setStyle(ButtonStyle.Success)
   );
 
-  if (!eventMode) {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`reserve_roster:${messageId}`)
-        .setLabel("ลงทะเบียนสำรอง")
-        .setStyle(ButtonStyle.Secondary)
-    );
-  }
+  row.addComponents(
+    new ButtonBuilder()
+      .setCustomId(`reserve_roster:${messageId}`)
+      .setLabel("ลงทะเบียนสำรอง")
+      .setStyle(ButtonStyle.Secondary)
+  );
 
   row.addComponents(
     new ButtonBuilder()
@@ -501,9 +499,11 @@ function isEventRoster(roster) {
   return roster.meta?.manualEvent === true || !roster.meta;
 }
 
-function getEventRegisteredEntries(entries) {
-  const joinedEntries = entries.filter((entry) => !entry.isReserve);
-  return joinedEntries.length > 0 ? joinedEntries : entries;
+function splitEventEntries(entries) {
+  return {
+    joined: entries.filter((entry) => !entry.isReserve),
+    reserve: entries.filter((entry) => entry.isReserve)
+  };
 }
 
 function resolveMyRosterStatus(roster, userId) {
@@ -549,20 +549,32 @@ function buildRosterEmbed(title, entries, { roster = null, eventMode = false } =
   const isEventMode = eventMode || isEventRoster(roster);
   if (isEventMode) {
     const pathLabelByValue = buildPathLabelMap();
-    const registeredEntries = getEventRegisteredEntries(entries);
-    const total = countUniqueMembersInEntries(registeredEntries);
-    const lines = registeredEntries.map((entry, idx) =>
-      formatRosterMemberLine(entry, idx, pathLabelByValue)
-    );
-    const chunks = lines.length > 0 ? splitLinesIntoChunks(lines, 1000) : ["ไม่มีสมาชิก"];
-    const fields = chunks.map((chunk, idx) => ({
-      name: idx === 0 ? "ผู้ลงทะเบียน" : `ผู้ลงทะเบียน (ต่อ ${idx + 1}/${chunks.length})`,
-      value: chunk
-    }));
+    const eventEntries = splitEventEntries(entries);
+    const joinedEntries = eventEntries.joined;
+    const reserveEntries = eventEntries.reserve;
+    const total = countUniqueMembersInEntries(entries);
+    const joinedTotal = joinedEntries.length;
+    const reserveTotal = reserveEntries.length;
+    const buildSectionFields = (titleText, targetEntries) => {
+      const lines = targetEntries.map((entry, idx) =>
+        formatRosterMemberLine(entry, idx, pathLabelByValue)
+      );
+      const chunks = lines.length > 0 ? splitLinesIntoChunks(lines, 1000) : ["ไม่มีสมาชิก"];
+      return chunks.map((chunk, idx) => ({
+        name: idx === 0 ? titleText : `${titleText} (ต่อ ${idx + 1}/${chunks.length})`,
+        value: chunk
+      }));
+    };
+    const fields = [
+      ...buildSectionFields("ลงชื่อ", joinedEntries),
+      ...buildSectionFields("สำรอง", reserveEntries)
+    ];
 
     return new EmbedBuilder()
       .setTitle(title)
-      .setDescription(`สมาชิกทั้งหมด ${total} คน | ลงชื่อ ${registeredEntries.length} คน`)
+      .setDescription(
+        `สมาชิกทั้งหมด ${total} คน | ลงชื่อ ${joinedTotal} คน | สำรอง ${reserveTotal} คน`
+      )
       .addFields(fields)
       .setColor(0x00b894)
       .setTimestamp();
@@ -622,33 +634,45 @@ function buildRosterComponentsV2(
   const isEventMode = eventMode || isEventRoster(roster);
   if (isEventMode) {
     const pathLabelByValue = buildPathLabelMap();
-    const registeredEntries = getEventRegisteredEntries(entries);
-    const total = countUniqueMembersInEntries(registeredEntries);
-    const lines = registeredEntries.map((entry, idx) =>
-      formatRosterMemberLine(entry, idx, pathLabelByValue)
-    );
-    const chunks = lines.length > 0 ? splitLinesIntoChunks(lines, 3400) : ["ไม่มีสมาชิก"];
+    const eventEntries = splitEventEntries(entries);
+    const joinedEntries = eventEntries.joined;
+    const reserveEntries = eventEntries.reserve;
+    const total = countUniqueMembersInEntries(entries);
+    const joinedTotal = joinedEntries.length;
+    const reserveTotal = reserveEntries.length;
 
     const container = new ContainerBuilder()
       .setAccentColor(0x00b894)
       .addTextDisplayComponents(
         new TextDisplayBuilder().setContent(`## ${title || "รายละเอียดกิจกรรม"}`),
         new TextDisplayBuilder().setContent(
-          `สมาชิกทั้งหมด ${total} คน | ลงชื่อ ${registeredEntries.length} คน`
+          `สมาชิกทั้งหมด ${total} คน | ลงชื่อ ${joinedTotal} คน | สำรอง ${reserveTotal} คน`
         )
-      )
-      .addSeparatorComponents(new SeparatorBuilder())
-      .addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(`### ผู้ลงทะเบียน\n${chunks[0]}`)
       );
 
-    for (let i = 1; i < chunks.length; i += 1) {
-      container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(
-          `### ผู้ลงทะเบียน (ต่อ ${i + 1}/${chunks.length})\n${chunks[i]}`
-        )
+    const addSimpleSection = (sectionTitle, targetEntries) => {
+      const lines = targetEntries.map((entry, idx) =>
+        formatRosterMemberLine(entry, idx, pathLabelByValue)
       );
-    }
+      const chunks = lines.length > 0 ? splitLinesIntoChunks(lines, 3400) : ["ไม่มีสมาชิก"];
+
+      container
+        .addSeparatorComponents(new SeparatorBuilder())
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(`### ${sectionTitle}\n${chunks[0]}`)
+        );
+
+      for (let i = 1; i < chunks.length; i += 1) {
+        container.addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `### ${sectionTitle} (ต่อ ${i + 1}/${chunks.length})\n${chunks[i]}`
+          )
+        );
+      }
+    };
+
+    addSimpleSection("ลงชื่อ", joinedEntries);
+    addSimpleSection("สำรอง", reserveEntries);
 
     if (rosterMessageId) {
       container.addSeparatorComponents(new SeparatorBuilder()).addActionRowComponents(

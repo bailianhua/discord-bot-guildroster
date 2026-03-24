@@ -324,18 +324,32 @@ function isEventRoster(roster) {
   return roster.meta?.manualEvent === true || !roster.meta;
 }
 
-function applyEventMemberStatus(roster, userId) {
+function applyEventMemberStatus(roster, userId, mode = "join") {
+  const isReserveMode = mode === "reserve";
   let changed = false;
 
-  if (!roster.memberIds.includes(userId)) {
+  if (isReserveMode) {
+    if (!roster.reserveMemberIds.includes(userId)) {
+      roster.reserveMemberIds.push(userId);
+      changed = true;
+    }
+  } else if (!roster.memberIds.includes(userId)) {
     roster.memberIds.push(userId);
     changed = true;
   }
 
-  const beforeReserveCount = roster.reserveMemberIds.length;
-  roster.reserveMemberIds = roster.reserveMemberIds.filter((id) => id !== userId);
-  if (roster.reserveMemberIds.length !== beforeReserveCount) {
-    changed = true;
+  if (isReserveMode) {
+    const beforeJoinedCount = roster.memberIds.length;
+    roster.memberIds = roster.memberIds.filter((id) => id !== userId);
+    if (roster.memberIds.length !== beforeJoinedCount) {
+      changed = true;
+    }
+  } else {
+    const beforeReserveCount = roster.reserveMemberIds.length;
+    roster.reserveMemberIds = roster.reserveMemberIds.filter((id) => id !== userId);
+    if (roster.reserveMemberIds.length !== beforeReserveCount) {
+      changed = true;
+    }
   }
 
   if (Object.prototype.hasOwnProperty.call(roster.memberDays, userId)) {
@@ -345,6 +359,11 @@ function applyEventMemberStatus(roster, userId) {
 
   if (Object.prototype.hasOwnProperty.call(roster.reserveMemberDays, userId)) {
     delete roster.reserveMemberDays[userId];
+    changed = true;
+  }
+
+  if (isReserveMode && Object.prototype.hasOwnProperty.call(roster.memberTeams, userId)) {
+    delete roster.memberTeams[userId];
     changed = true;
   }
 
@@ -441,7 +460,7 @@ function addMemberToRoster(messageId, userId, dayChoice = null) {
 
   ensureRosterMemberCollections(roster);
   const changed = isEventRoster(roster)
-    ? applyEventMemberStatus(roster, userId)
+    ? applyEventMemberStatus(roster, userId, "join")
     : applyMemberStatusByDay(roster, userId, dayChoice, "join");
 
   if (changed) {
@@ -457,7 +476,7 @@ function addReserveMemberToRoster(messageId, userId, dayChoice = null) {
 
   ensureRosterMemberCollections(roster);
   const changed = isEventRoster(roster)
-    ? applyEventMemberStatus(roster, userId)
+    ? applyEventMemberStatus(roster, userId, "reserve")
     : applyMemberStatusByDay(roster, userId, dayChoice, "reserve");
 
   if (changed) {

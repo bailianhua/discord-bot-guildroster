@@ -7,6 +7,7 @@ const {
 const { MENU_BUTTONS, REGISTER_BUTTON_ID } = require("../constants");
 const {
   addMemberToRoster,
+  addReserveMemberToRoster,
   getAutoRosterTargets,
   getMemberInfo,
   getRecentRostersInChannel,
@@ -430,12 +431,26 @@ async function handleButton(interaction) {
   }
 
   if (isEventRoster(roster)) {
+    const displayName = profile?.ign || interaction.user.username;
+
+    if (isReserveRoster) {
+      const alreadyReserve =
+        Array.isArray(roster.reserveMemberIds) &&
+        roster.reserveMemberIds.includes(interaction.user.id);
+      addReserveMemberToRoster(messageId, interaction.user.id);
+      await syncRosterMessage(interaction.guild, messageId, roster.title);
+      await replyEphemeral(interaction, {
+        content: alreadyReserve
+          ? `คุณลงชื่อสำรองในชื่อ **${displayName}** ไว้อยู่แล้ว`
+          : `ลงชื่อสำรองกิจกรรมในชื่อ **${displayName}** เรียบร้อย`,
+      });
+      return;
+    }
+
     const alreadyJoined =
       Array.isArray(roster.memberIds) && roster.memberIds.includes(interaction.user.id);
     addMemberToRoster(messageId, interaction.user.id);
     await syncRosterMessage(interaction.guild, messageId, roster.title);
-
-    const displayName = profile?.ign || interaction.user.username;
     await replyEphemeral(interaction, {
       content: alreadyJoined
         ? `คุณลงทะเบียนกิจกรรมในชื่อ **${displayName}** ไว้อยู่แล้ว`
