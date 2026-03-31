@@ -8,7 +8,7 @@ Discord bot for guild profile registration and roster management, with weekly au
 
 ## Features
 
-- Profile registration: `IGN`, `Path`
+- Profile registration: `IGN`, `Role`, `Main Weapon`
 - Roster actions: join, leave, show, announce, delete
 - Join flow with day selection modal: `วันเสาร์`, `วันอาทิตย์`, `ทั้งเสาร์และอาทิตย์`
 - Excel-compatible export button (`.csv`)
@@ -22,6 +22,11 @@ Discord bot for guild profile registration and roster management, with weekly au
 - Manual weekly controls:
   - `/triggerweeklybatch` to run Tuesday behavior now
   - `/clearoldroster` to clear all auto-weekly rosters (including current week)
+- Admin profile option editor:
+  - In `/adminmenu`, click `ตั้งค่า` in `ตั้งค่า Role/Weapon`
+  - Bot shows current `Role`/`Weapon` choices, with buttons to add/delete
+  - `Add` opens a small modal for one option; `Delete` opens a picker to remove one option
+  - Saved per guild and used immediately in registration dropdowns
 
 ## Requirements
 
@@ -65,13 +70,15 @@ Discord bot for guild profile registration and roster management, with weekly au
 
 ### Select Option Overrides
 
-- `PATH_OPTIONS_JSON`: optional JSON array
+- `ROLE_OPTIONS_JSON`: optional JSON array
+- `WEAPON_OPTIONS_JSON`: optional JSON array
 - `TEAM_OPTIONS_JSON`: optional JSON array (logic kept for future use)
 
 Example:
 
 ```env
-PATH_OPTIONS_JSON=[{"label":"Tank","value":"Tank","description":"Frontline"}]
+ROLE_OPTIONS_JSON=[{"label":"Tank","value":"tank","description":"Frontline"}]
+WEAPON_OPTIONS_JSON=[{"label":"Stonesplit - Might","value":"Stonesplit - Might","description":"Tank weapon"}]
 TEAM_OPTIONS_JSON=[{"label":"Attack Team","value":"attack","description":"Offense"},{"label":"Defense Team","value":"defense","description":"Defense"}]
 ```
 

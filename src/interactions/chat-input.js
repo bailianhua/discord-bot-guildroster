@@ -7,6 +7,7 @@ const {
 const {
   getAllRostersInGuild,
   getAutoRosterTargets,
+  getGuildProfileSelectOptions,
   getMemberInfo,
   getRecentRostersInChannel,
   getRecentRostersInGuild,
@@ -56,7 +57,8 @@ async function handleChatInput(interaction, { client }) {
 
   if (interaction.commandName === "register") {
     const profile = getMemberInfo(interaction.guildId, interaction.user.id);
-    await interaction.showModal(buildRegisterModal(profile));
+    const profileSelectOptions = getGuildProfileSelectOptions(interaction.guildId);
+    await interaction.showModal(buildRegisterModal(profile, profileSelectOptions));
     return;
   }
 
@@ -425,9 +427,15 @@ async function handleChatInput(interaction, { client }) {
       interaction.user.id,
       25
     );
+    const profileSelectOptions = getGuildProfileSelectOptions(interaction.guildId);
 
     await replyEphemeral(interaction, {
-      components: buildMyRosterComponentsV2(interaction.user, profile, rosters),
+      components: buildMyRosterComponentsV2(
+        interaction.user,
+        profile,
+        rosters,
+        profileSelectOptions
+      ),
       flags: MessageFlags.IsComponentsV2
     });
     return;

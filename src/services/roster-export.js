@@ -1,5 +1,5 @@
 const XLSX = require("xlsx");
-const { PATH_OPTIONS } = require("../config/select-options");
+const { ROLE_OPTIONS } = require("../config/select-options");
 const { dayChoiceLabel } = require("../utils/day-choice");
 
 function csvEscape(value) {
@@ -21,22 +21,54 @@ function slugifyFilename(text) {
   return safe || "roster";
 }
 
+function normalizeRoleValue(raw) {
+  const value = String(raw || "").trim();
+  return value || null;
+}
+
+function inferRoleFromLegacyPath(profile) {
+  const legacy = String(profile?.path || profile?.class || "").trim().toLowerCase();
+  if (!legacy) return null;
+  if (legacy.includes("tank")) return "tank";
+  if (legacy.includes("healer")) return "healer";
+  if (legacy.includes("dps")) return "dps";
+  return null;
+}
+
+function resolveRoleLabel(profile, roleLabelByValue) {
+  const roleValue = normalizeRoleValue(profile?.role) || inferRoleFromLegacyPath(profile);
+  if (!roleValue) return "-";
+  return (
+    roleLabelByValue[roleValue] ||
+    roleLabelByValue[String(roleValue).toLowerCase()] ||
+    String(roleValue)
+  );
+}
+
+function resolveWeapon(profile) {
+  const weapon = String(profile?.weapon || profile?.path || profile?.class || "").trim();
+  return weapon || "-";
+}
+
 function buildExportRows(entries, options = {}) {
-  const pathLabelByValue = Object.fromEntries(
-    PATH_OPTIONS.map((option) => [option.value, option.label])
+  const roleOptions = Array.isArray(options.roleOptions) && options.roleOptions.length > 0
+    ? options.roleOptions
+    : ROLE_OPTIONS;
+  const roleLabelByValue = Object.fromEntries(
+    roleOptions.map((option) => [option.value, option.label])
   );
   const displayNameByUserId = options.displayNameByUserId || {};
 
   const header = [
     "Discord name",
     "IGN",
-    "Path/class",
+    "Role",
+    "Main weapon",
     "สถานะ",
     "วันที่เข้าร่วม"
   ];
 
   const rows = entries.map((entry) => {
-    const profilePath = entry.profile?.path || entry.profile?.class || "-";
     const discordName =
       displayNameByUserId[entry.userId] ||
       entry.profile?.ign ||
@@ -44,7 +76,8 @@ function buildExportRows(entries, options = {}) {
     return [
       discordName,
       entry.profile?.ign || "-",
-      pathLabelByValue[profilePath] || profilePath,
+      resolveRoleLabel(entry.profile, roleLabelByValue),
+      resolveWeapon(entry.profile),
       entry.isReserve ? "สำรอง" : "ลงชื่อ",
       dayChoiceLabel(entry.dayChoice)
     ];
@@ -99,6 +132,7 @@ function buildRosterExcelBuffer(rosterTitle, entries, options = {}) {
     { wch: 28 },
     { wch: 24 },
     { wch: 18 },
+    { wch: 24 },
     { wch: 12 },
     { wch: 18 }
   ];

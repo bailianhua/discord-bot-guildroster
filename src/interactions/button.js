@@ -4,12 +4,17 @@ const {
   ButtonStyle,
   MessageFlags
 } = require("discord.js");
-const { MENU_BUTTONS, REGISTER_BUTTON_ID } = require("../constants");
+const {
+  MENU_BUTTONS,
+  PROFILE_OPTION_ACTIONS,
+  REGISTER_BUTTON_ID
+} = require("../constants");
 const {
   addMemberToRoster,
   addReserveMemberToRoster,
   getAllRostersInGuild,
   getAutoRosterTargets,
+  getGuildProfileSelectOptions,
   getMemberInfo,
   getRecentRostersInChannel,
   getRecentRostersInGuild,
@@ -21,6 +26,9 @@ const {
 } = require("../store");
 const {
   buildAutoRosterCalendarEmbed,
+  buildAddProfileOptionModal,
+  buildDeleteProfileOptionPrompt,
+  buildManageProfileOptionsPayload,
   buildReserveDayChoiceModal,
   buildRosterDayChoiceModal,
   buildMyRosterComponentsV2,
@@ -71,21 +79,29 @@ async function handleButton(interaction) {
 
   if (interaction.customId === REGISTER_BUTTON_ID) {
     const profile = getMemberInfo(interaction.guildId, interaction.user.id);
-    await interaction.showModal(buildRegisterModal(profile));
+    const profileSelectOptions = getGuildProfileSelectOptions(interaction.guildId);
+    await interaction.showModal(buildRegisterModal(profile, profileSelectOptions));
     return;
   }
 
   if (interaction.customId === MENU_BUTTONS.register) {
     const profile = getMemberInfo(interaction.guildId, interaction.user.id);
-    await interaction.showModal(buildRegisterModal(profile));
+    const profileSelectOptions = getGuildProfileSelectOptions(interaction.guildId);
+    await interaction.showModal(buildRegisterModal(profile, profileSelectOptions));
     return;
   }
 
   if (interaction.customId === MENU_BUTTONS.myRoster) {
     const profile = getMemberInfo(interaction.guildId, interaction.user.id);
     const rosters = getUserRostersInGuild(interaction.guildId, interaction.user.id, 25);
+    const profileSelectOptions = getGuildProfileSelectOptions(interaction.guildId);
     await replyEphemeral(interaction, {
-      components: buildMyRosterComponentsV2(interaction.user, profile, rosters),
+      components: buildMyRosterComponentsV2(
+        interaction.user,
+        profile,
+        rosters,
+        profileSelectOptions
+      ),
       flags: MessageFlags.IsComponentsV2
     });
     return;
@@ -252,6 +268,100 @@ async function handleButton(interaction) {
     return;
   }
 
+  if (interaction.customId === MENU_BUTTONS.manageProfileOptions) {
+    if (!hasManageGuildAccess(interaction)) {
+      await replyEphemeral(interaction, {
+        content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ตั้งค่า role/weapon ได้",
+      });
+      return;
+    }
+
+    const profileSelectOptions = getGuildProfileSelectOptions(interaction.guildId);
+    await replyEphemeral(interaction, buildManageProfileOptionsPayload(profileSelectOptions));
+    return;
+  }
+
+  if (interaction.customId === PROFILE_OPTION_ACTIONS.refresh) {
+    if (!hasManageGuildAccess(interaction)) {
+      await replyEphemeral(interaction, {
+        content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ตั้งค่า role/weapon ได้",
+      });
+      return;
+    }
+
+    const profileSelectOptions = getGuildProfileSelectOptions(interaction.guildId);
+    await replyEphemeral(interaction, buildManageProfileOptionsPayload(profileSelectOptions));
+    return;
+  }
+
+  if (interaction.customId === PROFILE_OPTION_ACTIONS.addRole) {
+    if (!hasManageGuildAccess(interaction)) {
+      await replyEphemeral(interaction, {
+        content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ตั้งค่า role/weapon ได้",
+      });
+      return;
+    }
+    await interaction.showModal(buildAddProfileOptionModal("role"));
+    return;
+  }
+
+  if (interaction.customId === PROFILE_OPTION_ACTIONS.addWeapon) {
+    if (!hasManageGuildAccess(interaction)) {
+      await replyEphemeral(interaction, {
+        content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ตั้งค่า role/weapon ได้",
+      });
+      return;
+    }
+    await interaction.showModal(buildAddProfileOptionModal("weapon"));
+    return;
+  }
+
+  if (interaction.customId === PROFILE_OPTION_ACTIONS.deleteRole) {
+    if (!hasManageGuildAccess(interaction)) {
+      await replyEphemeral(interaction, {
+        content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ตั้งค่า role/weapon ได้",
+      });
+      return;
+    }
+
+    const profileSelectOptions = getGuildProfileSelectOptions(interaction.guildId);
+    if (profileSelectOptions.roleOptions.length <= 1) {
+      await replyEphemeral(interaction, {
+        content: "ไม่สามารถลบ Role ได้ เพราะต้องมีอย่างน้อย 1 รายการ",
+      });
+      return;
+    }
+
+    await replyEphemeral(
+      interaction,
+      buildDeleteProfileOptionPrompt("role", profileSelectOptions.roleOptions)
+    );
+    return;
+  }
+
+  if (interaction.customId === PROFILE_OPTION_ACTIONS.deleteWeapon) {
+    if (!hasManageGuildAccess(interaction)) {
+      await replyEphemeral(interaction, {
+        content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ตั้งค่า role/weapon ได้",
+      });
+      return;
+    }
+
+    const profileSelectOptions = getGuildProfileSelectOptions(interaction.guildId);
+    if (profileSelectOptions.weaponOptions.length <= 1) {
+      await replyEphemeral(interaction, {
+        content: "ไม่สามารถลบ Weapon ได้ เพราะต้องมีอย่างน้อย 1 รายการ",
+      });
+      return;
+    }
+
+    await replyEphemeral(
+      interaction,
+      buildDeleteProfileOptionPrompt("weapon", profileSelectOptions.weaponOptions)
+    );
+    return;
+  }
+
   if (interaction.customId === MENU_BUTTONS.triggerWeeklyBatch) {
     if (!hasManageGuildAccess(interaction)) {
       await replyEphemeral(interaction, {
@@ -410,8 +520,10 @@ async function handleButton(interaction) {
     );
 
     const exportBuilder = isExcelExport ? buildRosterExcelBuffer : buildRosterCsvBuffer;
+    const profileSelectOptions = getGuildProfileSelectOptions(interaction.guildId);
     const { buffer, fileName } = exportBuilder(targetRoster.title, data.entries, {
-      displayNameByUserId
+      displayNameByUserId,
+      roleOptions: profileSelectOptions.roleOptions
     });
     const file = new AttachmentBuilder(buffer, { name: fileName });
     const fileTypeLabel = isExcelExport ? "Excel" : "CSV";

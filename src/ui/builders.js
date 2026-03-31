@@ -14,9 +14,14 @@ const {
   TextInputStyle,
   UserSelectMenuBuilder
 } = require("discord.js");
-const { MENU_BUTTONS, REGISTER_BUTTON_ID } = require("../constants");
 const {
-  PATH_OPTIONS,
+  MENU_BUTTONS,
+  PROFILE_OPTION_ACTIONS,
+  REGISTER_BUTTON_ID
+} = require("../constants");
+const {
+  ROLE_OPTIONS,
+  WEAPON_OPTIONS,
   TEAM_OPTIONS
 } = require("../config/select-options");
 const {
@@ -46,6 +51,50 @@ const MANUAL_EVENT_MONTH_SELECT_OPTIONS = [
   { label: "ธันวาคม (12)", value: "12", description: "เดือนธันวาคม" }
 ];
 
+function normalizeRoleValue(raw) {
+  const value = String(raw || "").trim();
+  return value || null;
+}
+
+function inferRoleFromLegacyProfile(profile) {
+  const legacy = String(profile?.path || profile?.class || "").trim().toLowerCase();
+  if (!legacy) return null;
+  if (legacy.includes("tank")) return "tank";
+  if (legacy.includes("healer")) return "healer";
+  if (legacy.includes("dps")) return "dps";
+  return null;
+}
+
+function resolveProfileRoleValue(profile) {
+  return normalizeRoleValue(profile?.role) || inferRoleFromLegacyProfile(profile);
+}
+
+function resolveProfileWeaponValue(profile) {
+  const weapon = String(profile?.weapon || profile?.path || profile?.class || "").trim();
+  return weapon || "-";
+}
+
+function buildRoleLabelMap(roleOptions = ROLE_OPTIONS) {
+  return Object.fromEntries(roleOptions.map((option) => [option.value, option.label]));
+}
+
+function resolveRoleLabel(roleValue, roleLabelByValue) {
+  if (!roleValue) return "-";
+  const direct = roleLabelByValue[roleValue];
+  if (direct) return direct;
+  const lower = roleLabelByValue[String(roleValue).toLowerCase()];
+  if (lower) return lower;
+  return String(roleValue);
+}
+
+function formatProfileSummary(profile, roleLabelByValue) {
+  if (!profile) return "ยังไม่ได้ลงทะเบียนโปรไฟล์";
+  const roleValue = resolveProfileRoleValue(profile);
+  const roleLabel = resolveRoleLabel(roleValue, roleLabelByValue);
+  const weapon = resolveProfileWeaponValue(profile);
+  return `${profile.ign || "-"} | ${roleLabel} | ${weapon}`;
+}
+
 function buildManualEventYearSelectOptions(selectedYear) {
   const currentYear = getTodayYmdParts(
     process.env.MANUAL_EVENT_TIMEZONE ||
@@ -66,13 +115,23 @@ function buildManualEventYearSelectOptions(selectedYear) {
   return options;
 }
 
-function buildRegistrationEmbed({ ign = "-", playerPath = "-" }) {
+function buildRegistrationEmbed({
+  ign = "-",
+  role = "-",
+  weapon = "-",
+  roleOptions = ROLE_OPTIONS
+}) {
+  const roleLabelByValue = buildRoleLabelMap(roleOptions);
+  const normalizedRole = normalizeRoleValue(role);
+  const roleLabel = normalizedRole ? resolveRoleLabel(normalizedRole, roleLabelByValue) : role;
+
   return new EmbedBuilder()
     .setTitle("การ์ดลงทะเบียนกิลด์")
     .setDescription("ลงทะเบียนเสร็จสมบูรณ์")
     .addFields(
       { name: "ชื่อในเกม (IGN)", value: ign, inline: true },
-      { name: "สายอาชีพ (Path)", value: playerPath, inline: true }
+      { name: "Role", value: roleLabel || "-", inline: true },
+      { name: "Main Weapon", value: weapon || "-", inline: true }
     )
     .setColor(0x3498db)
     .setTimestamp();
@@ -81,7 +140,7 @@ function buildRegistrationEmbed({ ign = "-", playerPath = "-" }) {
 function buildRegistrationPanelEmbed() {
   return new EmbedBuilder()
     .setTitle("ลงทะเบียนสมาชิกกิลด์")
-    .setDescription("คลิกที่ปุ่ม **ลงทะเบียนโปรไฟล์** เพื่อระบุชื่อและสายอาชีพของคุณ")
+    .setDescription("คลิกที่ปุ่ม **ลงทะเบียนโปรไฟล์** เพื่อระบุชื่อ, role และ main weapon")
     .setColor(0x5865f2)
     .setTimestamp();
 }
@@ -175,6 +234,16 @@ function buildAdminMenuComponentsV2() {
           new ButtonBuilder()
             .setCustomId(MENU_BUTTONS.announceRoster)
             .setLabel("ประกาศ")
+            .setStyle(ButtonStyle.Secondary)
+        ),
+      new SectionBuilder()
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent("**ตั้งค่า Role/Weapon**\nแก้ตัวเลือกในฟอร์มลงทะเบียน")
+        )
+        .setButtonAccessory(
+          new ButtonBuilder()
+            .setCustomId(MENU_BUTTONS.manageProfileOptions)
+            .setLabel("ตั้งค่า")
             .setStyle(ButtonStyle.Secondary)
         ),
       new SectionBuilder()
@@ -324,13 +393,17 @@ function buildReserveDayChoiceModal(roster) {
   return buildRosterDayChoiceModalByType(roster, { mode: "reserve" });
 }
 
-function buildRegisterModal(profile = null) {
+function buildRegisterModal(
+  profile = null,
+  { roleOptions = ROLE_OPTIONS, weaponOptions = WEAPON_OPTIONS } = {}
+) {
   const modal = new ModalBuilder()
     .setCustomId("register_profile")
     .setTitle("ลงทะเบียนกิลด์");
 
   const currentIgn = String(profile?.ign || "").trim();
-  const currentPath = String(profile?.path || profile?.class || "").trim();
+  const currentRole = resolveProfileRoleValue(profile);
+  const currentWeapon = String(profile?.weapon || profile?.path || profile?.class || "").trim();
 
   const ignInput = {
     type: 4,
@@ -342,18 +415,31 @@ function buildRegisterModal(profile = null) {
     ...(currentIgn ? { value: currentIgn } : {})
   };
 
-  const pathOptions = PATH_OPTIONS.map((option) => ({
+  const selectedRoleOptions = roleOptions.map((option) => ({
     ...option,
-    ...(currentPath && option.value === currentPath ? { default: true } : {})
+    ...(currentRole && option.value === currentRole ? { default: true } : {})
   }));
 
-  const pathSelect = new StringSelectMenuBuilder()
-    .setCustomId("register_path_value")
-    .setPlaceholder("เลือกสายอาชีพของคุณ")
+  const roleSelect = new StringSelectMenuBuilder()
+    .setCustomId("register_role_value")
+    .setPlaceholder("เลือก role ของคุณ")
     .setRequired(true)
     .setMinValues(1)
     .setMaxValues(1)
-    .addOptions(pathOptions);
+    .addOptions(selectedRoleOptions);
+
+  const selectedWeaponOptions = weaponOptions.map((option) => ({
+    ...option,
+    ...(currentWeapon && option.value === currentWeapon ? { default: true } : {})
+  }));
+
+  const weaponSelect = new StringSelectMenuBuilder()
+    .setCustomId("register_weapon_value")
+    .setPlaceholder("เลือกอาวุธหลักของคุณ")
+    .setRequired(true)
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(selectedWeaponOptions);
 
   modal.addLabelComponents(
     new LabelBuilder()
@@ -361,12 +447,161 @@ function buildRegisterModal(profile = null) {
       .setDescription("ระบุชื่อตัวละครของคุณ")
       .setTextInputComponent(ignInput),
     new LabelBuilder()
-      .setLabel("สายอาชีพ (Path)")
-      .setDescription("เลือกมา 1 สายอาชีพ")
-      .setStringSelectMenuComponent(pathSelect),
+      .setLabel("Role")
+      .setDescription("เลือกมา 1 role: tank / healer / dps")
+      .setStringSelectMenuComponent(roleSelect),
+    new LabelBuilder()
+      .setLabel("Main Weapon")
+      .setDescription("เลือกมา 1 อาวุธหลัก")
+      .setStringSelectMenuComponent(weaponSelect),
   );
 
   return modal;
+}
+
+function buildProfileOptionPreviewLines(options, { limit = 10 } = {}) {
+  const lines = options.slice(0, limit).map((option, idx) => {
+    const label = truncateLabel(option.label || option.value || "-", 60);
+    const value = truncateLabel(option.value || "-", 40);
+    const description = option.description
+      ? ` - ${truncateLabel(option.description, 50)}`
+      : "";
+    return `${idx + 1}. ${label} (\`${value}\`)${description}`;
+  });
+
+  const hidden = options.length - lines.length;
+  if (hidden > 0) {
+    lines.push(`... และอีก ${hidden} รายการ`);
+  }
+  return lines;
+}
+
+function buildManageProfileOptionsPayload({
+  roleOptions = ROLE_OPTIONS,
+  weaponOptions = WEAPON_OPTIONS
+} = {}) {
+  const roleLines = buildProfileOptionPreviewLines(roleOptions);
+  const weaponLines = buildProfileOptionPreviewLines(weaponOptions);
+
+  let content = [
+    "### ตั้งค่า Role/Weapon",
+    "จัดการตัวเลือกในฟอร์มลงทะเบียน (สูงสุดประเภทละ 25 รายการ)",
+    "",
+    `**Role (${roleOptions.length})**`,
+    ...roleLines,
+    "",
+    `**Weapon (${weaponOptions.length})**`,
+    ...weaponLines
+  ].join("\n");
+  if (content.length > 1900) {
+    content = `${content.slice(0, 1860)}\n...(แสดงไม่ครบ กรุณาใช้ปุ่มเพิ่ม/ลบเพื่อจัดการรายการ)`;
+  }
+
+  const actionsRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(PROFILE_OPTION_ACTIONS.addRole)
+      .setLabel("เพิ่ม Role")
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(PROFILE_OPTION_ACTIONS.deleteRole)
+      .setLabel("ลบ Role")
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId(PROFILE_OPTION_ACTIONS.addWeapon)
+      .setLabel("เพิ่ม Weapon")
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(PROFILE_OPTION_ACTIONS.deleteWeapon)
+      .setLabel("ลบ Weapon")
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId(PROFILE_OPTION_ACTIONS.refresh)
+      .setLabel("รีเฟรช")
+      .setStyle(ButtonStyle.Secondary)
+  );
+
+  return {
+    content,
+    components: [actionsRow]
+  };
+}
+
+function buildAddProfileOptionModal(kind = "role") {
+  const isRole = kind === "role";
+  const modal = new ModalBuilder()
+    .setCustomId(
+      isRole ? PROFILE_OPTION_ACTIONS.addRoleModal : PROFILE_OPTION_ACTIONS.addWeaponModal
+    )
+    .setTitle(isRole ? "เพิ่ม Role Option" : "เพิ่ม Weapon Option");
+
+  const labelInput = new TextInputBuilder()
+    .setCustomId("profile_option_label")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(100)
+    .setPlaceholder(isRole ? "เช่น Tank" : "เช่น Stonesplit - Might");
+
+  const valueInput = new TextInputBuilder()
+    .setCustomId("profile_option_value")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(100)
+    .setPlaceholder(isRole ? "เช่น tank" : "เช่น Stonesplit - Might");
+
+  const descriptionInput = new TextInputBuilder()
+    .setCustomId("profile_option_description")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(false)
+    .setMaxLength(100)
+    .setPlaceholder("คำอธิบาย (ไม่บังคับ)");
+
+  modal.addLabelComponents(
+    new LabelBuilder()
+      .setLabel("Label")
+      .setDescription("ชื่อที่จะแสดงใน dropdown")
+      .setTextInputComponent(labelInput),
+    new LabelBuilder()
+      .setLabel("Value")
+      .setDescription("ค่าอ้างอิงของตัวเลือกนี้")
+      .setTextInputComponent(valueInput),
+    new LabelBuilder()
+      .setLabel("Description")
+      .setDescription("ไม่บังคับ")
+      .setTextInputComponent(descriptionInput)
+  );
+
+  return modal;
+}
+
+function buildDeleteProfileOptionPrompt(kind = "role", options = []) {
+  const isRole = kind === "role";
+  const customId = isRole
+    ? PROFILE_OPTION_ACTIONS.deleteRoleSelect
+    : PROFILE_OPTION_ACTIONS.deleteWeaponSelect;
+  const placeholder = isRole ? "เลือก Role ที่ต้องการลบ" : "เลือก Weapon ที่ต้องการลบ";
+
+  const selectOptions = options.map((option) => ({
+    label: truncateLabel(option.label || option.value || "-", 100),
+    value: option.value,
+    description: truncateLabel(
+      option.description || `value: ${option.value}`,
+      100
+    )
+  }));
+
+  const selectMenu = new StringSelectMenuBuilder()
+    .setCustomId(customId)
+    .setPlaceholder(placeholder)
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(selectOptions);
+
+  return {
+    content: isRole ? "เลือก Role ที่ต้องการลบ" : "เลือก Weapon ที่ต้องการลบ",
+    components: [
+      new ActionRowBuilder().addComponents(selectMenu)
+    ]
+  };
 }
 
 function buildStartRosterModal() {
@@ -550,28 +785,25 @@ function buildRosterDayBuckets(entries) {
   return { joined, reserve };
 }
 
-function buildPathLabelMap() {
-  return Object.fromEntries(PATH_OPTIONS.map((option) => [option.value, option.label]));
-}
-
-function formatRosterMemberLine(entry, idx, pathLabelByValue) {
+function formatRosterMemberLine(entry, idx, roleLabelByValue) {
   const reserveTag = entry.isReserve ? " [สำรอง]" : "";
   const profile = entry.profile;
   if (!profile) {
     return `${idx + 1}. <@${entry.userId}>${reserveTag} | ไม่พบข้อมูลโปรไฟล์`;
   }
 
-  const profilePath = profile.path || profile.class || "-";
-  const pathLabel = pathLabelByValue[profilePath] || profilePath;
-  return `${idx + 1}. <@${entry.userId}>${reserveTag} | ${profile.ign} | ${pathLabel}`;
+  const roleValue = resolveProfileRoleValue(profile);
+  const roleLabel = resolveRoleLabel(roleValue, roleLabelByValue);
+  const weapon = resolveProfileWeaponValue(profile);
+  return `${idx + 1}. <@${entry.userId}>${reserveTag} | ${profile.ign} | ${roleLabel} | ${weapon}`;
 }
 
-function buildBucketLines(joinedEntries, reserveEntries, pathLabelByValue) {
+function buildBucketLines(joinedEntries, reserveEntries, roleLabelByValue) {
   const joinedLines = joinedEntries.map((entry, idx) =>
-    formatRosterMemberLine(entry, idx, pathLabelByValue)
+    formatRosterMemberLine(entry, idx, roleLabelByValue)
   );
   const reserveLines = reserveEntries.map((entry, idx) =>
-    formatRosterMemberLine(entry, idx + joinedEntries.length, pathLabelByValue)
+    formatRosterMemberLine(entry, idx + joinedEntries.length, roleLabelByValue)
   );
   return [...joinedLines, ...reserveLines];
 }
@@ -642,10 +874,14 @@ function resolveMyRosterStatus(roster, userId) {
   };
 }
 
-function buildRosterEmbed(title, entries, { roster = null, eventMode = false } = {}) {
+function buildRosterEmbed(
+  title,
+  entries,
+  { roster = null, eventMode = false, roleOptions = ROLE_OPTIONS } = {}
+) {
   const isEventMode = eventMode || isEventRoster(roster);
   if (isEventMode) {
-    const pathLabelByValue = buildPathLabelMap();
+    const roleLabelByValue = buildRoleLabelMap(roleOptions);
     const eventEntries = splitEventEntries(entries);
     const joinedEntries = eventEntries.joined;
     const reserveEntries = eventEntries.reserve;
@@ -654,7 +890,7 @@ function buildRosterEmbed(title, entries, { roster = null, eventMode = false } =
     const reserveTotal = reserveEntries.length;
     const buildSectionFields = (titleText, targetEntries) => {
       const lines = targetEntries.map((entry, idx) =>
-        formatRosterMemberLine(entry, idx, pathLabelByValue)
+        formatRosterMemberLine(entry, idx, roleLabelByValue)
       );
       const chunks = lines.length > 0 ? splitLinesIntoChunks(lines, 1000) : ["ไม่มีสมาชิก"];
       return chunks.map((chunk, idx) => ({
@@ -677,7 +913,7 @@ function buildRosterEmbed(title, entries, { roster = null, eventMode = false } =
       .setTimestamp();
   }
 
-  const pathLabelByValue = buildPathLabelMap();
+  const roleLabelByValue = buildRoleLabelMap(roleOptions);
   const buckets = buildRosterDayBuckets(entries);
   const joinedTotal = entries.filter((entry) => !entry.isReserve).length;
   const reserveTotal = entries.length - joinedTotal;
@@ -689,7 +925,7 @@ function buildRosterEmbed(title, entries, { roster = null, eventMode = false } =
     const joinedCount = joinedEntries.length;
     const reserveCount = reserveEntries.length;
     const header = `${bucketLabel} (ลงชื่อ ${joinedCount}) (สำรอง ${reserveCount})`;
-    const lines = buildBucketLines(joinedEntries, reserveEntries, pathLabelByValue);
+    const lines = buildBucketLines(joinedEntries, reserveEntries, roleLabelByValue);
 
     if (lines.length === 0) {
       return [{ name: header, value: "ไม่มีสมาชิก" }];
@@ -726,11 +962,11 @@ function buildRosterComponentsV2(
   title,
   entries,
   rosterMessageId,
-  { roster = null, eventMode = false } = {}
+  { roster = null, eventMode = false, roleOptions = ROLE_OPTIONS } = {}
 ) {
   const isEventMode = eventMode || isEventRoster(roster);
   if (isEventMode) {
-    const pathLabelByValue = buildPathLabelMap();
+    const roleLabelByValue = buildRoleLabelMap(roleOptions);
     const eventEntries = splitEventEntries(entries);
     const joinedEntries = eventEntries.joined;
     const reserveEntries = eventEntries.reserve;
@@ -749,7 +985,7 @@ function buildRosterComponentsV2(
 
     const addSimpleSection = (sectionTitle, targetEntries) => {
       const lines = targetEntries.map((entry, idx) =>
-        formatRosterMemberLine(entry, idx, pathLabelByValue)
+        formatRosterMemberLine(entry, idx, roleLabelByValue)
       );
       const chunks = lines.length > 0 ? splitLinesIntoChunks(lines, 3400) : ["ไม่มีสมาชิก"];
 
@@ -781,7 +1017,7 @@ function buildRosterComponentsV2(
     return [container];
   }
 
-  const pathLabelByValue = buildPathLabelMap();
+  const roleLabelByValue = buildRoleLabelMap(roleOptions);
   const buckets = buildRosterDayBuckets(entries);
   const joinedTotal = entries.filter((entry) => !entry.isReserve).length;
   const reserveTotal = entries.length - joinedTotal;
@@ -802,7 +1038,7 @@ function buildRosterComponentsV2(
     const joinedCount = joinedEntries.length;
     const reserveCount = reserveEntries.length;
     const sectionTitle = `${bucketLabel} (ลงชื่อ ${joinedCount}) (สำรอง ${reserveCount})`;
-    const lines = buildBucketLines(joinedEntries, reserveEntries, pathLabelByValue);
+    const lines = buildBucketLines(joinedEntries, reserveEntries, roleLabelByValue);
     const chunks =
       lines.length > 0 ? splitLinesIntoChunks(lines, 3400) : ["ไม่มีสมาชิก"];
 
@@ -838,11 +1074,9 @@ function buildRosterComponentsV2(
   return [container];
 }
 
-function buildMyRosterEmbed(user, profile, rosters) {
-  const profilePath = profile?.path || profile?.class || "-";
-  const profileText = profile
-    ? `${profile.ign} | ${profilePath}`
-    : "ยังไม่ได้ลงทะเบียนโปรไฟล์";
+function buildMyRosterEmbed(user, profile, rosters, { roleOptions = ROLE_OPTIONS } = {}) {
+  const roleLabelByValue = buildRoleLabelMap(roleOptions);
+  const profileText = formatProfileSummary(profile, roleLabelByValue);
 
   const rosterLines = rosters.length
     ? rosters.map((roster, idx) => {
@@ -871,11 +1105,14 @@ function buildMyRosterEmbed(user, profile, rosters) {
     .setTimestamp();
 }
 
-function buildMyRosterComponentsV2(user, profile, rosters) {
-  const profilePath = profile?.path || profile?.class || "-";
-  const profileText = profile
-    ? `${profile.ign} | ${profilePath}`
-    : "ยังไม่ได้ลงทะเบียนโปรไฟล์";
+function buildMyRosterComponentsV2(
+  user,
+  profile,
+  rosters,
+  { roleOptions = ROLE_OPTIONS } = {}
+) {
+  const roleLabelByValue = buildRoleLabelMap(roleOptions);
+  const profileText = formatProfileSummary(profile, roleLabelByValue);
 
   const rosterLines = rosters.length
     ? rosters.map((roster, idx) => {
@@ -1040,6 +1277,9 @@ function buildAutoRosterCalendarEmbed(
 module.exports = {
   buildAutoRosterCalendarEmbed,
   buildAdminMenuComponentsV2,
+  buildAddProfileOptionModal,
+  buildDeleteProfileOptionPrompt,
+  buildManageProfileOptionsPayload,
   buildMyRosterComponentsV2,
   buildMyRosterEmbed,
   buildUserMenuComponentsV2,

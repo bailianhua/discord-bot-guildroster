@@ -3,17 +3,21 @@ const {
   ButtonBuilder,
   ButtonStyle
 } = require("discord.js");
+const { PROFILE_OPTION_ACTIONS } = require("../constants");
 const {
   addMemberToRoster,
   addReserveMemberToRoster,
   createRoster,
+  getGuildProfileSelectOptions,
   getMemberInfo,
   getRoster,
   getRosterEntries,
+  setGuildProfileSelectOptions,
   setMemberInfo,
   setMemberTeamInRoster
 } = require("../store");
 const {
+  buildManageProfileOptionsPayload,
   buildRegisterButton,
   buildRegistrationEmbed,
   buildRosterActionRow,
@@ -29,6 +33,15 @@ const {
 const { hasManageGuildAccess } = require("../utils/access");
 const { dayChoiceLabel } = require("../utils/day-choice");
 const { replyEphemeral } = require("../utils/interaction-response");
+
+function inferRoleFromLegacyPath(pathValue) {
+  const value = String(pathValue || "").trim().toLowerCase();
+  if (!value) return "dps";
+  if (value.includes("tank")) return "tank";
+  if (value.includes("healer")) return "healer";
+  if (value.includes("dps")) return "dps";
+  return "dps";
+}
 
 async function handleModalSubmit(interaction) {
   if (!interaction.guildId) {
@@ -83,7 +96,11 @@ async function handleModalSubmit(interaction) {
       parsedDate.day
     ).padStart(2, "0")}`;
     const title = titleInput || "ลงชื่อสมาชิกกิลด์";
-    const pendingEmbed = buildRosterEmbed(title, [], { eventMode: true });
+    const profileSelectOptions = getGuildProfileSelectOptions(interaction.guildId);
+    const pendingEmbed = buildRosterEmbed(title, [], {
+      eventMode: true,
+      roleOptions: profileSelectOptions.roleOptions
+    });
     const row = new ActionRowBuilder().addComponents(
       buildRegisterButton(ButtonStyle.Primary),
       new ButtonBuilder()
@@ -119,6 +136,73 @@ async function handleModalSubmit(interaction) {
     const liveRow = buildRosterActionRow(rosterMessage.id, { eventMode: true });
     const exportRow = buildRosterExportRow(rosterMessage.id);
     await rosterMessage.edit({ components: [liveRow, exportRow] });
+    return;
+  }
+
+  const isAddRoleOptionModal = interaction.customId === PROFILE_OPTION_ACTIONS.addRoleModal;
+  const isAddWeaponOptionModal = interaction.customId === PROFILE_OPTION_ACTIONS.addWeaponModal;
+  if (isAddRoleOptionModal || isAddWeaponOptionModal) {
+    if (!hasManageGuildAccess(interaction)) {
+      await replyEphemeral(interaction, {
+        content: "เฉพาะผู้ดูแลระบบเท่านั้นที่ตั้งค่า role/weapon ได้",
+      });
+      return;
+    }
+
+    const label = interaction.fields.getTextInputValue("profile_option_label").trim();
+    const value = interaction.fields.getTextInputValue("profile_option_value").trim();
+    const description = interaction.fields
+      .getTextInputValue("profile_option_description")
+      .trim();
+    const kindLabel = isAddRoleOptionModal ? "Role" : "Weapon";
+
+    if (!label || !value) {
+      await replyEphemeral(interaction, {
+        content: "บันทึกไม่สำเร็จ: Label และ Value ต้องไม่ว่าง",
+      });
+      return;
+    }
+
+    const profileSelectOptions = getGuildProfileSelectOptions(interaction.guildId);
+    const currentList = isAddRoleOptionModal
+      ? profileSelectOptions.roleOptions
+      : profileSelectOptions.weaponOptions;
+    if (currentList.length >= 25) {
+      await replyEphemeral(interaction, {
+        content: `บันทึกไม่สำเร็จ: ${kindLabel} options เกิน 25 รายการไม่ได้`,
+      });
+      return;
+    }
+
+    const duplicate = currentList.some(
+      (option) => String(option.value).toLowerCase() === value.toLowerCase()
+    );
+    if (duplicate) {
+      await replyEphemeral(interaction, {
+        content: `บันทึกไม่สำเร็จ: มี ${kindLabel} value "${value}" อยู่แล้ว`,
+      });
+      return;
+    }
+
+    const newOption = {
+      label,
+      value,
+      ...(description ? { description } : {})
+    };
+    const saved = setGuildProfileSelectOptions(interaction.guildId, {
+      roleOptions: isAddRoleOptionModal
+        ? [...profileSelectOptions.roleOptions, newOption]
+        : profileSelectOptions.roleOptions,
+      weaponOptions: isAddWeaponOptionModal
+        ? [...profileSelectOptions.weaponOptions, newOption]
+        : profileSelectOptions.weaponOptions
+    });
+    const managerPayload = buildManageProfileOptionsPayload(saved);
+
+    await replyEphemeral(interaction, {
+      content: `เพิ่ม ${kindLabel} option เรียบร้อย: ${label} (\`${value}\`)\n\n${managerPayload.content}`,
+      components: managerPayload.components
+    });
     return;
   }
 
@@ -258,8 +342,10 @@ async function handleModalSubmit(interaction) {
     await syncRosterMessage(interaction.guild, targetRoster.messageId, targetRoster.title);
 
     const data = getRosterEntries(targetRoster.messageId);
+    const profileSelectOptions = getGuildProfileSelectOptions(interaction.guildId);
     const embed = buildRosterEmbed(targetRoster.title, data.entries, {
-      roster: data.roster
+      roster: data.roster,
+      roleOptions: profileSelectOptions.roleOptions
     });
 
     const summaryLines = [
@@ -295,19 +381,33 @@ async function handleModalSubmit(interaction) {
   }
 
   const ign = interaction.fields.getTextInputValue("register_ign_value").trim();
-  const playerPath = interaction.fields.getStringSelectValues("register_path_value")[0];
+  let role = null;
+  let weapon = null;
+  try {
+    role = interaction.fields.getStringSelectValues("register_role_value")[0];
+    weapon = interaction.fields.getStringSelectValues("register_weapon_value")[0];
+  } catch (_error) {
+    const legacyPath = interaction.fields.getStringSelectValues("register_path_value")[0];
+    role = inferRoleFromLegacyPath(legacyPath);
+    weapon = legacyPath;
+  }
 
   setMemberInfo(interaction.guildId, interaction.user.id, {
     ign,
-    class: playerPath,
-    path: playerPath
+    role,
+    weapon,
+    class: weapon,
+    path: weapon
   });
 
+  const profileSelectOptions = getGuildProfileSelectOptions(interaction.guildId);
   await replyEphemeral(interaction, {
     embeds: [
       buildRegistrationEmbed({
         ign,
-        playerPath
+        role,
+        weapon,
+        roleOptions: profileSelectOptions.roleOptions
       }).setFooter({ text: "บันทึกการลงทะเบียนแล้ว พิมพ์ /register เพื่ออัปเดตข้อมูลได้ตลอดเวลา" })
     ],
   });

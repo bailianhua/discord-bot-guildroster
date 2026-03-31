@@ -1,6 +1,7 @@
 const {
   clearRosterListViewMessage,
   deleteRoster,
+  getGuildProfileSelectOptions,
   getRecentRostersInGuild,
   getRosterEntries,
   getRosterListViewMessage,
@@ -23,12 +24,13 @@ async function fetchTextMessage(guild, channelId, messageId) {
 async function syncRosterMirrorMessages(guild, roster, title, entries) {
   const mirrors = getRosterMirrorMessages(roster.messageId);
   if (!Array.isArray(mirrors) || mirrors.length === 0) return;
+  const profileSelectOptions = getGuildProfileSelectOptions(roster.guildId);
 
   const components = buildRosterComponentsV2(
     title || roster.title,
     entries,
     roster.messageId,
-    { roster }
+    { roster, roleOptions: profileSelectOptions.roleOptions }
   );
 
   for (const ref of mirrors) {
@@ -86,11 +88,13 @@ async function syncRosterMessage(guild, rosterMessageId, title) {
 
   const data = getRosterEntries(rosterMessageId);
   if (!data) return;
+  const profileSelectOptions = getGuildProfileSelectOptions(data.roster.guildId);
 
   const message = await fetchTextMessage(guild, data.roster.channelId, rosterMessageId);
   if (message) {
     const embed = buildRosterEmbed(title || data.roster.title, data.entries, {
-      roster: data.roster
+      roster: data.roster,
+      roleOptions: profileSelectOptions.roleOptions
     });
     await message.edit({ embeds: [embed] }).catch(() => null);
   }

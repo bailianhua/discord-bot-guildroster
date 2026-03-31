@@ -1,5 +1,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const {
+  ROLE_OPTIONS,
+  WEAPON_OPTIONS
+} = require("./config/select-options");
 
 const dataDir = path.join(process.cwd(), "data");
 const dataFile = path.join(dataDir, "store.json");
@@ -14,7 +18,8 @@ function ensureStore() {
       members: {},
       rosters: {},
       rosterListViews: {},
-      autoRosterTargets: []
+      autoRosterTargets: [],
+      guildProfileOptions: {}
     };
     fs.writeFileSync(dataFile, JSON.stringify(base, null, 2), "utf8");
   }
@@ -29,6 +34,105 @@ function readStore() {
 function writeStore(store) {
   ensureStore();
   fs.writeFileSync(dataFile, JSON.stringify(store, null, 2), "utf8");
+}
+
+function sanitizeOption(raw, idx, sourceName) {
+  const label = String(raw?.label || "").trim();
+  const value = String(raw?.value || "").trim();
+  const description = String(raw?.description || "").trim();
+  if (!label || !value) {
+    throw new Error(
+      `${sourceName}[${idx}] ต้องมี label และ value ที่เป็นข้อความและไม่ว่าง`
+    );
+  }
+
+  return {
+    label: label.slice(0, 100),
+    value: value.slice(0, 100),
+    ...(description ? { description: description.slice(0, 100) } : {})
+  };
+}
+
+function sanitizeOptionArray(raw, sourceName) {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw new Error(`${sourceName} ต้องเป็น JSON array และมีอย่างน้อย 1 รายการ`);
+  }
+
+  const options = raw.map((item, idx) => sanitizeOption(item, idx, sourceName));
+  if (options.length > 25) {
+    return options.slice(0, 25);
+  }
+  return options;
+}
+
+function readGuildProfileOptionsRecord(store, guildId) {
+  if (!guildId) return null;
+  if (!store.guildProfileOptions || typeof store.guildProfileOptions !== "object") {
+    return null;
+  }
+  return store.guildProfileOptions[guildId] || null;
+}
+
+function getGuildProfileSelectOptions(guildId) {
+  if (!guildId) {
+    return {
+      roleOptions: ROLE_OPTIONS,
+      weaponOptions: WEAPON_OPTIONS
+    };
+  }
+
+  const store = readStore();
+  const saved = readGuildProfileOptionsRecord(store, guildId);
+  if (!saved) {
+    return {
+      roleOptions: ROLE_OPTIONS,
+      weaponOptions: WEAPON_OPTIONS
+    };
+  }
+
+  let roleOptions = ROLE_OPTIONS;
+  let weaponOptions = WEAPON_OPTIONS;
+
+  try {
+    roleOptions = sanitizeOptionArray(saved.roleOptions, "guildProfileOptions.roleOptions");
+  } catch {
+    roleOptions = ROLE_OPTIONS;
+  }
+
+  try {
+    weaponOptions = sanitizeOptionArray(saved.weaponOptions, "guildProfileOptions.weaponOptions");
+  } catch {
+    weaponOptions = WEAPON_OPTIONS;
+  }
+
+  return {
+    roleOptions,
+    weaponOptions
+  };
+}
+
+function setGuildProfileSelectOptions(guildId, { roleOptions, weaponOptions }) {
+  const normalizedGuildId = String(guildId || "").trim();
+  if (!normalizedGuildId) {
+    throw new Error("guildId ไม่ถูกต้อง");
+  }
+
+  const nextRoleOptions = sanitizeOptionArray(roleOptions, "roleOptions");
+  const nextWeaponOptions = sanitizeOptionArray(weaponOptions, "weaponOptions");
+
+  const store = readStore();
+  if (!store.guildProfileOptions || typeof store.guildProfileOptions !== "object") {
+    store.guildProfileOptions = {};
+  }
+
+  store.guildProfileOptions[normalizedGuildId] = {
+    roleOptions: nextRoleOptions,
+    weaponOptions: nextWeaponOptions,
+    updatedAt: new Date().toISOString()
+  };
+  writeStore(store);
+
+  return store.guildProfileOptions[normalizedGuildId];
 }
 
 function setMemberInfo(guildId, userId, profile) {
@@ -599,6 +703,7 @@ module.exports = {
   getAutoRosterTarget,
   getAutoRosterTargets,
   getAllRostersInGuild,
+  getGuildProfileSelectOptions,
   getLatestAutoRosterTarget,
   getLatestRosterInChannel,
   getRosterListViewMessage,
@@ -612,6 +717,7 @@ module.exports = {
   removeRosterMirrorMessage,
   removeMemberFromRoster,
   setAutoRosterTarget,
+  setGuildProfileSelectOptions,
   setRosterListViewMessage,
   setMemberTeamInRoster,
   setMemberInfo

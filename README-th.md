@@ -8,7 +8,7 @@
 
 ## ความสามารถหลัก
 
-- ลงทะเบียนโปรไฟล์: `IGN`, `Path`
+- ลงทะเบียนโปรไฟล์: `IGN`, `Role`, `Main Weapon`
 - จัดการโรสเตอร์: เข้าร่วม, ยกเลิก, แสดง, ประกาศ, ลบ
 - ปุ่มเข้าร่วมกิจกรรมแบบเลือกวันใน Modal: `วันเสาร์`, `วันอาทิตย์`, `ทั้งเสาร์และอาทิตย์`
 - ปุ่มดาวน์โหลดไฟล์ที่เปิดใน Excel ได้ (`.csv`)
@@ -22,6 +22,11 @@
 - คำสั่งควบคุมแบบแมนนวล:
   - `/triggerweeklybatch` รันพฤติกรรมวันอังคารทันที
   - `/clearoldroster` ลบโรสเตอร์อัตโนมัติทั้งหมด (รวมสัปดาห์ปัจจุบัน)
+- ตัวแก้ไขตัวเลือกโปรไฟล์ (แอดมิน):
+  - เข้า `/adminmenu` แล้วกด `ตั้งค่า` ในหัวข้อ `ตั้งค่า Role/Weapon`
+  - ระบบจะแสดงรายการ `Role`/`Weapon` ปัจจุบัน พร้อมปุ่มเพิ่ม/ลบ
+  - ปุ่มเพิ่มจะเปิด Modal สำหรับเพิ่มทีละรายการ และปุ่มลบจะมีเมนูให้เลือกตัวที่ต้องการลบ
+  - บันทึกแบบแยกตามเซิร์ฟเวอร์ และนำไปใช้กับ dropdown ลงทะเบียนทันที
 
 ## ข้อกำหนด
 
@@ -65,13 +70,15 @@
 
 ### ปรับตัวเลือกในฟอร์ม
 
-- `PATH_OPTIONS_JSON`: ไม่บังคับ (JSON array)
+- `ROLE_OPTIONS_JSON`: ไม่บังคับ (JSON array)
+- `WEAPON_OPTIONS_JSON`: ไม่บังคับ (JSON array)
 - `TEAM_OPTIONS_JSON`: ไม่บังคับ (JSON array, เก็บ logic ไว้สำหรับอนาคต)
 
 ตัวอย่าง:
 
 ```env
-PATH_OPTIONS_JSON=[{"label":"Tank","value":"Tank","description":"Frontline"}]
+ROLE_OPTIONS_JSON=[{"label":"Tank","value":"tank","description":"Frontline"}]
+WEAPON_OPTIONS_JSON=[{"label":"Stonesplit - Might","value":"Stonesplit - Might","description":"Tank weapon"}]
 TEAM_OPTIONS_JSON=[{"label":"Attack Team","value":"attack","description":"Offense"},{"label":"Defense Team","value":"defense","description":"Defense"}]
 ```
 
