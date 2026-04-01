@@ -489,11 +489,13 @@ async function handleButton(interaction) {
     interaction.customId.startsWith("download_roster_csv:") || isLegacyCsvExport;
   const isExcelExport = interaction.customId.startsWith("download_roster_xlsx:");
   if (isCsvExport || isExcelExport) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     const messageId = interaction.customId.split(":")[1];
     const targetRoster = getRoster(messageId);
     const data = getRosterEntries(messageId);
     if (!targetRoster || !data) {
-      await replyEphemeral(interaction, {
+      await interaction.editReply({
         content: "ไม่พบกิจกรรมนี้แล้ว",
       });
       return;
@@ -540,14 +542,14 @@ async function handleButton(interaction) {
     }
 
     if (sentViaDm) {
-      await replyEphemeral(interaction, {
+      await interaction.editReply({
         content: `ส่งไฟล์ ${fileTypeLabel} ให้คุณทาง DM แล้ว`,
       });
       return;
     }
 
     const fallbackFile = new AttachmentBuilder(buffer, { name: fileName });
-    await replyEphemeral(interaction, {
+    await interaction.editReply({
       content: `ส่ง DM ไม่สำเร็จ (อาจปิดรับ DM จากเซิร์ฟเวอร์) จึงแนบไฟล์ ${fileTypeLabel} ให้ในข้อความนี้แทน`,
       files: [fallbackFile],
     });
