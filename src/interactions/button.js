@@ -525,12 +525,31 @@ async function handleButton(interaction) {
       displayNameByUserId,
       roleOptions: profileSelectOptions.roleOptions
     });
-    const file = new AttachmentBuilder(buffer, { name: fileName });
     const fileTypeLabel = isExcelExport ? "Excel" : "CSV";
 
+    let sentViaDm = false;
+    try {
+      const dmFile = new AttachmentBuilder(buffer, { name: fileName });
+      await interaction.user.send({
+        content: `ไฟล์กิจกรรม (${fileTypeLabel}) \`${targetRoster.title}\` จากเซิร์ฟเวอร์ **${interaction.guild?.name || interaction.guildId}**`,
+        files: [dmFile]
+      });
+      sentViaDm = true;
+    } catch (_error) {
+      sentViaDm = false;
+    }
+
+    if (sentViaDm) {
+      await replyEphemeral(interaction, {
+        content: `ส่งไฟล์ ${fileTypeLabel} ให้คุณทาง DM แล้ว`,
+      });
+      return;
+    }
+
+    const fallbackFile = new AttachmentBuilder(buffer, { name: fileName });
     await replyEphemeral(interaction, {
-      content: `ดาวน์โหลดไฟล์กิจกรรม (${fileTypeLabel}) \`${targetRoster.title}\` ได้ที่ไฟล์แนบด้านล่าง`,
-      files: [file],
+      content: `ส่ง DM ไม่สำเร็จ (อาจปิดรับ DM จากเซิร์ฟเวอร์) จึงแนบไฟล์ ${fileTypeLabel} ให้ในข้อความนี้แทน`,
+      files: [fallbackFile],
     });
     return;
   }
